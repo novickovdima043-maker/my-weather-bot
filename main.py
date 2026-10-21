@@ -1,6 +1,9 @@
 import asyncio
 import time
 import random
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
@@ -11,11 +14,13 @@ BOT_TOKEN = "8828936622:AAHlaydwIK8qWI82_sLvhRmBz5CHsim5Q4k".strip()
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Создание нижнего меню с кнопками (теперь 4 города)
+# Создание нижнего меню с кнопками
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Москва"), KeyboardButton(text="Зеленоград")],
-        [KeyboardButton(text="Санкт-Петербург"), KeyboardButton(text="Екатеринбург")]
+        [KeyboardButton(text="Москва")],
+        [KeyboardButton(text="Зеленоград")],
+        [KeyboardButton(text="Санкт-Петербург")],
+        [KeyboardButton(text="Екатеринбург")]
     ],
     resize_keyboard=True,
     input_field_placeholder="Выберите город..."
@@ -25,7 +30,6 @@ YANDEX_STATUSES = [
     "Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"
 ]
 
-# Глобальная память бота для фиксации данных на 1 час для всех городов
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0},
     "Зеленоград": {"text": None, "updated_at": 0},
@@ -33,27 +37,23 @@ weather_memory = {
     "Екатеринбург": {"text": None, "updated_at": 0}
 }
 
-# Время жизни данных в секундах (1 час)
 LIFETIME = 3600
 
-# Функция генерации погодных условий с учетом климата каждого города
 def generate_fresh_weather(city_name: str) -> str:
-    # Задаем базовую дневную температуру в зависимости от региона
     if city_name == "Зеленоград":
         base_temp = random.randint(2, 5)
         humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
         base_temp = random.randint(3, 6)
-        humidity = random.randint(88, 97) # Повышенная влажность для Питера
+        humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
-        base_temp = random.randint(-2, 2) # На Урале в конце октября уже заметно холоднее
+        base_temp = random.randint(-2, 2)
         humidity = random.randint(70, 85)
     else:
-        base_temp = random.randint(4, 7)  # Москва
+        base_temp = random.randint(4, 7)
         humidity = random.randint(82, 94)
         
-    # Рассчитываем суточную сетку диапазонов «минимальная-максимальная»
-    temp_night_min = base_temp - random.randint(4, 6)
+    temp_night_min = base_temp - random.randint(4, 5)
     temp_night_max = base_temp - random.randint(2, 3)
     range_night = f"{temp_night_min}–{temp_night_max}"
     
@@ -88,16 +88,13 @@ def generate_fresh_weather(city_name: str) -> str:
         f"─────────────────────"
     )
 
-# Умная выдача данных из оперативной памяти без лишних приписок
 def get_cached_weather(city_name: str) -> str:
     current_time = time.time()
     city_data = weather_memory[city_name]
     
-    # Если данные сохранены и 1 час не прошел — возвращаем старый текст
     if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
         return city_data["text"]
     
-    # Если прошел час — генерируем заново
     new_weather = generate_fresh_weather(city_name)
     weather_memory[city_name]["text"] = new_weather
     weather_memory[city_name]["updated_at"] = current_time
@@ -107,21 +104,38 @@ def get_cached_weather(city_name: str) -> str:
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! Я чистый погодный бот. Теперь я показываю погоду в Москве, Зеленограде, "
-        "Санкт-Петербурге и Екатеринбурге. Выберите город ниже 👇",
+        "Привет! Я чистый круглосуточный погодный бот. Выберите город ниже 👇",
         reply_markup=weather_keyboard
     )
 
-# Обрабатываем нажатие любой из четырех кнопок
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург"}))
 async def send_weather(message: Message):
     loop = asyncio.get_event_loop()
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
+# --- ХАК ДЛЯ ОБХОДА ОШИБКИ PORT BINDING НА RENDER ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive")
+
+def run_health_server():
+    # Render автоматически передает номер порта в переменную среды PORT
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"🌐 Запущен заглушечный веб-сервер на порту {port}")
+    server.serve_forever()
+
 async def main():
-    print("🚀 Бот с четырьмя городами успешно запущен!")
+    # Запускаем веб-сервер в отдельном независимом потоке
+    threading.Thread(target=run_health_server, daemon=True).start()
+    
+    print("🚀 Финальный чистый бот успешно запущен в облаке!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
