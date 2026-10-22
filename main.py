@@ -31,7 +31,7 @@ WEATHER_STATUSES = [
     "Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"
 ]
 
-# Глобальная память для фиксации погоды на 1 час (чтобы данные не прыгали)
+# Глобальная память для фиксации погоды на 1 час
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0},
     "Зеленоград": {"text": None, "updated_at": 0},
@@ -44,7 +44,7 @@ LIFETIME = 3600  # Время фиксации данных в секундах 
 
 # Скрытый автономный генератор на базе климатической модели
 def generate_hidden_style_weather(city_name: str) -> str:
-    # Задаем базовые температуры октября для каждого региона
+    # Задаем базовые температуры для каждого региона
     if city_name == "Зеленоград" or city_name == "Поварово":
         base_temp = random.randint(2, 5)
         humidity = random.randint(82, 94)
@@ -57,6 +57,9 @@ def generate_hidden_style_weather(city_name: str) -> str:
     else:
         base_temp = random.randint(4, 7)  # Москва
         humidity = random.randint(82, 94)
+        
+    # Расчет ощущаемой температуры (осенью всегда кажется холоднее из-за сырости и ветра) [INDEX]
+    feels_like = base_temp - random.randint(2, 4) [INDEX]
         
     # Рассчитываем суточную сетку диапазонов «минимальная-максимальная»
     temp_night_min = base_temp - random.randint(4, 5)
@@ -79,11 +82,12 @@ def generate_hidden_style_weather(city_name: str) -> str:
     pressure = random.randint(742, 751)
     status = random.choice(WEATHER_STATUSES)
 
-    # УПОМИНАНИЕ ЯНДЕКСА ПОЛНОСТЬЮ УДАЛЕНО ИЗ СТРОКИ ВЫВОДА:
+    # ИСПРАВЛЕННЫЙ ТЕКСТ ВЫВОДА (БЕЗ ЛИШНИХ СЛОВ И С «ОЩУЩАЕТСЯ КАК»): [INDEX]
     return (
         f"🌍 Погода в: **{city_name}** (Мониторинг обновлен)\n"
         f"─────────────────────\n"
-        f"🌡 Сейчас: {base_temp}°C (точное значение)\n"
+        f"🌡 Сейчас: {base_temp}°C\n"
+        f"🌡 Ощущается как: {feels_like}°C\n"
         f"📝 На улице: {status}\n"
         f"💧 Влажность: {humidity}%\n"
         f"🧭 Давление: {pressure} мм рт. ст.\n"
@@ -189,4 +193,3 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-        
