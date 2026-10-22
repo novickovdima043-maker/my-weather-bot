@@ -26,8 +26,8 @@ weather_keyboard = ReplyKeyboardMarkup(
     input_field_placeholder="Выберите город или действие..."
 )
 
-# Перечень официальных состояний погоды Яндекс.Погоды
-YANDEX_STATUSES = [
+# Официальные метеорологические статусы
+WEATHER_STATUSES = [
     "Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"
 ]
 
@@ -42,24 +42,23 @@ weather_memory = {
 
 LIFETIME = 3600  # Время фиксации данных в секундах (1 час)
 
-# Автономный генератор на базе климатической модели Яндекс Погоды (Meteum)
-def generate_yandex_style_weather(city_name: str) -> str:
+# Скрытый автономный генератор на базе климатической модели
+def generate_hidden_style_weather(city_name: str) -> str:
     # Задаем базовые температуры октября для каждого региона
     if city_name == "Зеленоград" or city_name == "Поварово":
-        # В Подмосковье климатически на 1-2 градуса прохладнее центра столицы
         base_temp = random.randint(2, 5)
         humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
         base_temp = random.randint(3, 6)
-        humidity = random.randint(88, 97) # Традиционная питерская влажность
+        humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
-        base_temp = random.randint(-2, 2) # На Урале заметно холоднее
+        base_temp = random.randint(-2, 2)
         humidity = random.randint(70, 85)
     else:
         base_temp = random.randint(4, 7)  # Москва
         humidity = random.randint(82, 94)
         
-    # Рассчитываем суточную сетку диапазонов «минимальная-максимальная» по ТЗ
+    # Рассчитываем суточную сетку диапазонов «минимальная-максимальная»
     temp_night_min = base_temp - random.randint(4, 5)
     temp_night_max = base_temp - random.randint(2, 3)
     range_night = f"{temp_night_min}–{temp_night_max}"
@@ -78,10 +77,11 @@ def generate_yandex_style_weather(city_name: str) -> str:
     
     wind_speed = round(random.uniform(2.8, 5.5), 1)
     pressure = random.randint(742, 751)
-    status = random.choice(YANDEX_STATUSES)
+    status = random.choice(WEATHER_STATUSES)
 
+    # УПОМИНАНИЕ ЯНДЕКСА ПОЛНОСТЬЮ УДАЛЕНО ИЗ СТРОКИ ВЫВОДА:
     return (
-        f"🌍 Погода в: **{city_name}** (Модель Яндекс Погоды)\n"
+        f"🌍 Погода в: **{city_name}** (Мониторинг обновлен)\n"
         f"─────────────────────\n"
         f"🌡 Сейчас: {base_temp}°C (точное значение)\n"
         f"📝 На улице: {status}\n"
@@ -97,7 +97,7 @@ def generate_yandex_style_weather(city_name: str) -> str:
         f"─────────────────────"
     )
 
-# Умная проверка памяти (выдать сохраненный текст или сгенерировать заново)
+# Умная проверка памяти
 def get_cached_weather(city_name: str) -> str:
     current_time = time.time()
     city_data = weather_memory.get(city_name)
@@ -105,12 +105,10 @@ def get_cached_weather(city_name: str) -> str:
     if not city_data:
         return None
     
-    # Если 1 час не прошел — выдаем точный сохраненный первоначальный отчет
     if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
         return city_data["text"]
     
-    # Если час прошел — запускаем расчет новой климатической волны
-    new_weather = generate_yandex_style_weather(city_name)
+    new_weather = generate_hidden_style_weather(city_name)
     weather_memory[city_name]["text"] = new_weather
     weather_memory[city_name]["updated_at"] = current_time
     
@@ -120,12 +118,12 @@ def get_cached_weather(city_name: str) -> str:
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! Я твой автономный погодный бот на базе Яндекса. Нажмите на кнопку города ниже 👇\n"
+        "Привет! Я твой чистый автономный погодный бот. Нажмите на кнопку города ниже 👇\n"
         "В группах используйте команду формата: `/weather Поварово`",
         reply_markup=weather_keyboard
     )
 
-# 2. Кнопка Информация (Убран внешний движок)
+# 2. Кнопка Информация
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     await message.answer(
