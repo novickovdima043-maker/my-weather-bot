@@ -1,175 +1,270 @@
+
 import asyncio
-import time
-import random
 import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import aiohttp
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
-# --- ТВОЙ ТОКЕН TELEGRAM ---
-BOT_TOKEN = "8828936622:AAHlaydwIK8qWI82_sLvhRmBz5CHsim5Q4k".strip()
 
-bot = Bot(token=BOT_TOKEN)
+# Вставь новый токен в переменную окружения BOT_TOKEN
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "Укажи токен бота в переменной окружения BOT_TOKEN"
+    )
+
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+)
 dp = Dispatcher()
 
-# Создание нижнего меню с кнопками
+# Координаты городов
+CITIES = {
+    "Москва": (55.7558, 37.6173),
+    "Зеленоград": (55.9919, 37.2144),
+    "Санкт-Петербург": (59.9343, 30.3351),
+    "Екатеринбург": (56.8389, 60.6057),
+    "Поварово": (56.0667, 37.0667),
+}
+
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Москва"), KeyboardButton(text="Зеленоград")],
-        [KeyboardButton(text="Санкт-Петербург"), KeyboardButton(text="Екатеринбург")],
+        [
+            KeyboardButton(text="Москва"),
+            KeyboardButton(text="Зеленоград")
+        ],
+        [
+            KeyboardButton(text="Санкт-Петербург"),
+            KeyboardButton(text="Екатеринбург")
+        ],
         [KeyboardButton(text="Поварово")],
         [KeyboardButton(text="Информация")]
     ],
     resize_keyboard=True,
-    input_field_placeholder="Выберите город или действие..."
+    input_field_placeholder="Выберите город..."
 )
 
-# Официальные метеорологические статусы
-WEATHER_STATUSES = [
-    "Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"
-]
+# Кэш на 10 минут: данные не будут запрашиваться
+# заново при каждом нажатии кнопки.
+CACHE_SECONDS = 600
+weather_cache = {}
 
-# Глобальная память для фиксации погоды на 1 час (чтобы данные не прыгали)
-weather_memory = {
-    "Москва": {"text": None, "updated_at": 0},
-    "Зеленоград": {"text": None, "updated_at": 0},
-    "Санкт-Петербург": {"text": None, "updated_at": 0},
-    "Екатеринбург": {"text": None, "updated_at": 0},
-    "Поварово": {"text": None, "updated_at": 0}
+WEATHER_CODES = {
+    0: "Ясно ☀️",
+    1: "Преимущественно ясно 🌤",
+    2: "Переменная облачность ⛅",
+    3: "Пасмурно ☁️",
+    45: "Туман 🌫",
+    48: "Изморозевый туман 🌫",
+    51: "Слабая морось 🌦",
+    53: "Морось 🌦",
+    55: "Сильная морось 🌧",
+    61: "Небольшой дождь 🌧",
+    63: "Дождь 🌧",
+    65: "Сильный дождь 🌧",
+    71: "Небольшой снег 🌨",
+    73: "Снег ❄️",
+    75: "Сильный снег ❄️",
+    77: "Снежные зёрна 🌨",
+    80: "Ливневый дождь 🌦",
+    81: "Сильные ливни 🌧",
+    82: "Очень сильные ливни ⛈",
+    85: "Снегопад 🌨",
+    86: "Сильный снегопад ❄️",
+    95: "Гроза ⛈",
+    96: "Гроза с градом ⛈",
+    99: "Сильная гроза с градом ⛈",
 }
 
-LIFETIME = 3600  # Время фиксации данных в секундах (1 час)
 
-# Скрытый автономный генератор на базе климатической модели
-def generate_hidden_style_weather(city_name: str) -> str:
-    # Задаем базовые температуры октября для каждого региона
-    if city_name == "Зеленоград" or city_name == "Поварово":
-        base_temp = random.randint(2, 5)
-        humidity = random.randint(82, 94)
-    elif city_name == "Санкт-Петербург":
-        base_temp = random.randint(3, 6)
-        humidity = random.randint(88, 97)
-    elif city_name == "Екатеринбург":
-        base_temp = random.randint(-2, 2)
-        humidity = random.randint(70, 85)
-    else:
-        base_temp = random.randint(4, 7)  # Москва
-        humidity = random.randint(82, 94)
-        
-    # Рассчитываем суточную сетку диапазонов «минимальная-максимальная»
-    temp_night_min = base_temp - random.randint(4, 5)
-    temp_night_max = base_temp - random.randint(2, 3)
-    range_night = f"{temp_night_min}–{temp_night_max}"
-    
-    temp_morning_min = base_temp - random.randint(2, 3)
-    temp_morning_max = base_temp + random.randint(0, 1)
-    range_morning = f"{temp_morning_min}–{temp_morning_max}"
-    
-    temp_day_min = base_temp - random.randint(0, 1)
-    temp_day_max = base_temp + random.randint(2, 3)
-    range_day = f"{temp_day_min}–{temp_day_max}"
-    
-    temp_evening_min = base_temp - random.randint(3, 4)
-    temp_evening_max = base_temp - random.randint(1, 2)
-    range_evening = f"{temp_evening_min}–{temp_evening_max}"
-    
-    wind_speed = round(random.uniform(2.8, 5.5), 1)
-    pressure = random.randint(742, 751)
-    status = random.choice(WEATHER_STATUSES)
+async def get_weather(city: str) -> str:
+    """Получает текущую погоду и прогноз Open-Meteo."""
 
-    # УПОМИНАНИЕ ЯНДЕКСА ПОЛНОСТЬЮ УДАЛЕНО ИЗ СТРОКИ ВЫВОДА:
-    return (
-        f"🌍 Погода в: **{city_name}** (Мониторинг обновлен)\n"
-        f"─────────────────────\n"
-        f"🌡 Сейчас: {base_temp}°C (точное значение)\n"
+    now = datetime.now().timestamp()
+    cached = weather_cache.get(city)
+
+    if cached and now - cached["time"] < CACHE_SECONDS:
+        return cached["text"]
+
+    latitude, longitude = CITIES[city]
+
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": (
+            "temperature_2m,relative_humidity_2m,"
+            "apparent_temperature,weather_code,"
+            "pressure_msl,wind_speed_10m"
+        ),
+        "daily": (
+            "temperature_2m_max,temperature_2m_min,"
+            "sunrise,sunset"
+        ),
+        "timezone": "Europe/Moscow",
+        "forecast_days": 1,
+    }
+
+    url = "https://api.open-meteo.com/v1/forecast"
+
+    timeout = aiohttp.ClientTimeout(total=15)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url, params=params) as response:
+            response.raise_for_status()
+            data = await response.json()
+
+    current = data["current"]
+    daily = data["daily"]
+
+    # Исходная температура из погодного API
+    real_temp = current["temperature_2m"]
+
+    # Пользовательская поправка: отображаем +2 °C.
+    displayed_temp = round(real_temp + 2)
+
+    # Ощущаемая температура также корректируется на +2 °C.
+    real_feels = current["apparent_temperature"]
+    feels_temp = round(real_feels + 2)
+
+    humidity = current["relative_humidity_2m"]
+    pressure = round(current["pressure_msl"])
+    wind = current["wind_speed_10m"]
+    code = current["weather_code"]
+
+    status = WEATHER_CODES.get(code, "Неизвестные условия")
+
+    sunrise = daily["sunrise"][0].split("T")[-1]
+    sunset = daily["sunset"][0].split("T")[-1]
+
+    min_temp = round(daily["temperature_2m_min"][0])
+    max_temp = round(daily["temperature_2m_max"][0])
+
+    # Поправка +2 °C применяется только к отображению.
+    min_display = min_temp + 2
+    max_display = max_temp + 2
+
+    report = (
+        f"🌍 *Погода в {city}*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🌡 Температура: *{displayed_temp}°C*\n"
         f"📝 На улице: {status}\n"
+        f"🌡 Ощущается как: *{feels_temp}°C*\n"
         f"💧 Влажность: {humidity}%\n"
-        f"🧭 Давление: {pressure} мм рт. ст.\n"
-        f"💨 Ветер: {wind_speed} м/с\n"
-        f"─────────────────────\n"
-        f"📊 **Ожидаемая температура по времени суток:**\n"
-        f"🌙 Ночью: {range_night}°C\n"
-        f"🌅 Утром: {range_morning}°C\n"
-        f"☀️ Днем: {range_day}°C\n"
-        f"🌆 Вечером: {range_evening}°C\n"
-        f"─────────────────────"
+        f"🧭 Давление: {pressure} гПа\n"
+        f"💨 Ветер: {wind} км/ч\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🌅 Восход солнца: *{sunrise}*\n"
+        f"🌇 Закат солнца: *{sunset}*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📊 *Прогноз на сегодня*\n"
+        f"🌡 Минимум: {min_display}°C\n"
+        f"🌡 Максимум: {max_display}°C\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"ℹ️ Температура отображается "
+        f"с поправкой +2°C.\n"
+        f"🕒 Данные API: {current['time'].split('T')[-1]}"
     )
 
-# Умная проверка памяти
-def get_cached_weather(city_name: str) -> str:
-    current_time = time.time()
-    city_data = weather_memory.get(city_name)
-    
-    if not city_data:
-        return None
-    
-    if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
-        return city_data["text"]
-    
-    new_weather = generate_hidden_style_weather(city_name)
-    weather_memory[city_name]["text"] = new_weather
-    weather_memory[city_name]["updated_at"] = current_time
-    
-    return new_weather
+    weather_cache[city] = {
+        "text": report,
+        "time": now
+    }
 
-# 1. Команда /start
+    return report
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! Я твой чистый автономный погодный бот. Нажмите на кнопку города ниже 👇\n"
-        "В группах используйте команду формата: `/weather Поварово`",
+        "Привет! 🌤 Я погодный бот.\n\n"
+        "Выбери город, чтобы узнать погоду, "
+        "влажность, ветер, восход и закат солнца.",
         reply_markup=weather_keyboard
     )
 
-# 2. Кнопка Информация
+
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     await message.answer(
-        "ℹ️ **Информация о боте**\n"
-        "─────────────────────\n"
-        "🤖 Версия бота: `v0.2`\n"
-        "💻 Разработчик: **Hatik**\n"
-        "─────────────────────",
+        "ℹ️ *Информация о боте*\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🤖 Версия: v0.3\n"
+        "💻 Разработчик: Hatik\n
+        "🌡 Отображение температуры: +2°C",
         reply_markup=weather_keyboard
     )
 
-# 3. Работа в группах через команду /weather [город]
+
 @dp.message(Command("weather"))
-async def cmd_weather_group(message: Message):
-    args = message.text.split(maxsplit=1)
-    
+async def cmd_weather(message: Message):
+    args = (message.text or "").split(maxsplit=1)
+
     if len(args) < 2:
         await message.reply(
-            "❌ Укажите локацию! Пример использования в чате:\n"
-            "`/weather Зеленоград` или `/weather Поварово`"
+            "Укажи город, например:\n"
+            "/weather Зеленоград"
         )
         return
-        
-    requested_city = args[1].strip().capitalize()
-    
-    if requested_city == "Санкт-петербург" or requested_city == "Питер":
-        requested_city = "Санкт-Петербург"
-        
-    if requested_city in weather_memory:
-        loop = asyncio.get_event_loop()
-        weather_report = await loop.run_in_executor(None, get_cached_weather, requested_city)
-        await message.reply(weather_report)
-    else:
-        await message.reply(
-            f"❌ Локация '{requested_city}' пока не добавлена в код.\n"
-            f"Доступны: Москва, Зеленоград, Поварово, Санкт-Петербург, Екатеринбург."
+
+    requested_city = args[1].strip().casefold()
+
+    aliases = {
+        "питер": "Санкт-Петербург",
+        "санкт-петербург": "Санкт-Петербург",
+        "санкт петербург": "Санкт-Петербург",
+    }
+
+    city = aliases.get(requested_city)
+
+    if city is None:
+        city = next(
+            (
+                name for name in CITIES
+                if name.casefold() == requested_city
+            ),
+            None
         )
 
-# 4. Нажатие Reply-кнопок городов
-@dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
-async def send_weather(message: Message):
-    loop = asyncio.get_event_loop()
-    weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
-    await message.answer(weather_report, reply_markup=weather_keyboard)
+    if city is None:
+        await message.reply(
+            "Город не найден.\n"
+            "Доступны: " + ", ".join(CITIES.keys())
+        )
+        return
 
-# --- ХАК ДЛЯ ОБХОДА ОШИБКИ PORT BINDING НА RENDER ---
+    await send_city_weather(message, city)
+
+
+async def send_city_weather(message: Message, city: str):
+    try:
+        report = await get_weather(city)
+        await message.answer(
+            report,
+            reply_markup=weather_keyboard
+        )
+    except (aiohttp.ClientError, KeyError, ValueError) as error:
+        print(f"Weather API error: {error}")
+        await message.answer(
+            "⚠️ Не удалось получить погоду. "
+            "Попробуй ещё раз немного позже.",
+            reply_markup=weather_keyboard
+        )
+
+
+@dp.message(F.text.in_(set(CITIES.keys())))
+async def city_button(message: Message):
+    await send_city_weather(message, message.text)
+
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -177,15 +272,27 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive")
 
+    def log_message(self, format, *args):
+        pass
+
+
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     server.serve_forever()
 
+
 async def main():
-    threading.Thread(target=run_health_server, daemon=True).start()
-    await dp.start_polling(bot)
+    threading.Thread(
+        target=run_health_server,
+        daemon=True
+    ).start()
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
-
