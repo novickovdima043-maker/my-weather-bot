@@ -8,13 +8,16 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart, Command
 
-# --- ТВОЙ ОБНОВЛЕННЫЙ ТОКЕН TELEGRAM ПОГОДНОГО БОТА ---
+# --- ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Создание нижнего меню с кнопками
+# ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
+SYSTEM_STATUS = {"is_active": True}
+users_database = set()
+
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Москва"), KeyboardButton(text="Зеленоград")],
@@ -27,7 +30,7 @@ weather_keyboard = ReplyKeyboardMarkup(
 
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 
-# Исправленная глобальная память для фиксации погоды строго на Сегодня
+# Глобальная память для фиксации погоды строго на Сегодня
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0},
     "Зеленоград": {"text": None, "updated_at": 0},
@@ -37,7 +40,6 @@ weather_memory = {
 }
 LIFETIME = 3600
 
-# Автономный генератор одиночной карточки строго на Сегодня
 def generate_stable_weather(city_name: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
         real_current_temp = random.randint(1, 4)
@@ -60,26 +62,13 @@ def generate_stable_weather(city_name: str) -> str:
         sunset_time = "17:14"
         humidity = random.randint(82, 94)
         
-    # Математические правила: +2°C к базе, -2°C к ощущениям
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
     
-    # Рассчитываем суточную сетку диапазонов температур
-    temp_night_min = base_temp - random.randint(4, 5)
-    temp_night_max = base_temp - random.randint(2, 3)
-    range_night = f"{temp_night_min}–{temp_night_max}"
-    
-    temp_morning_min = base_temp - random.randint(2, 3)
-    temp_morning_max = base_temp + random.randint(0, 1)
-    range_morning = f"{temp_morning_min}–{temp_morning_max}"
-    
-    temp_day_min = base_temp - random.randint(0, 1)
-    temp_day_max = base_temp + random.randint(2, 3)
-    range_day = f"{temp_day_min}–{temp_day_max}"
-    
-    temp_evening_min = base_temp - random.randint(3, 4)
-    temp_evening_max = base_temp - random.randint(1, 2)
-    range_evening = f"{temp_evening_min}–{temp_evening_max}"
+    range_night = f"{base_temp - 5}–{base_temp - 2}"
+    range_morning = f"{base_temp - 2}–{base_temp}"
+    range_day = f"{base_temp}–{base_temp + 3}"
+    range_evening = f"{base_temp - 3}–{base_temp - 1}"
     
     wind_speed = round(random.uniform(2.8, 5.5), 1)
     pressure = random.randint(742, 751)
@@ -108,21 +97,12 @@ def generate_stable_weather(city_name: str) -> str:
 def get_cached_weather(city_name: str) -> str:
     current_time = time.time()
     city_data = weather_memory.get(city_name)
-    
-    # КЭШ: Если 1 час не прошел — выдаем сохраненный текст
     if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
         return city_data["text"]
-        
-    # Если час прошел — генерируем одну карточку строго на один день
     fresh_report = generate_stable_weather(city_name)
     weather_memory[city_name]["text"] = fresh_report
     weather_memory[city_name]["updated_at"] = current_time
-    
     return fresh_report
-
-# ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
-SYSTEM_STATUS = {"is_active": True}
-users_database = set()
 
 def check_bot_active(message: Message) -> bool:
     if not SYSTEM_STATUS["is_active"]:
@@ -135,14 +115,14 @@ async def cmd_start(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.5. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.5. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.5`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.5`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
@@ -153,7 +133,7 @@ async def send_weather(message: Message):
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
-# --- ИНТЕРНЕТ-ШЛЮЗ ДЛЯ ДИСТАНЦИОННОГО УПРАВЛЕНИЯ ИЗ БОТА-ПУЛЬТА ---
+# --- ИНТЕРНЕТ-ШЛЮЗ ДЛЯ ПУЛЬТА УПРАВЛЕНИЯ ---
 class RemoteAdminServer(BaseHTTPRequestHandler):
     def do_GET(self):
         if "/status" in self.path:
@@ -163,14 +143,12 @@ class RemoteAdminServer(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(response_json.encode())
-            
         elif "/toggle" in self.path:
             SYSTEM_STATUS["is_active"] = not SYSTEM_STATUS["is_active"]
             status_str = "active" if SYSTEM_STATUS["is_active"] else "disabled"
             self.send_response(200)
             self.end_headers()
             self.wfile.write(status_str.encode())
-            
         elif "/clear" in self.path:
             for city in weather_memory:
                 weather_memory[city] = {"text": None, "updated_at": 0}
