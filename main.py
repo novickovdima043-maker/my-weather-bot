@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart, Command
 
-# --- ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
+# --- ТВОЙ ОБНОВЛЕННЫЙ ТОКЕН TELEGRAM ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
 
 bot = Bot(token=BOT_TOKEN)
@@ -27,7 +27,7 @@ weather_keyboard = ReplyKeyboardMarkup(
 
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 
-# Глобальная память для фиксации погоды на 1 час
+# Исправленная глобальная память для фиксации погоды строго на Сегодня
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0},
     "Зеленоград": {"text": None, "updated_at": 0},
@@ -120,6 +120,10 @@ def get_cached_weather(city_name: str) -> str:
     
     return fresh_report
 
+# ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
+SYSTEM_STATUS = {"is_active": True}
+users_database = set()
+
 def check_bot_active(message: Message) -> bool:
     if not SYSTEM_STATUS["is_active"]:
         return False
@@ -131,14 +135,14 @@ async def cmd_start(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.3. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.5. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.3`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.5`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
