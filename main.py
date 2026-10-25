@@ -99,45 +99,46 @@ def get_cached_weather(city_name: str) -> str:
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
-# --- СКРЫТЫЙ ПРИЕМНИК СИСТЕМНЫХ КОМАНД ИЗ TELEGRAM API ---
+# --- 1. ПРИОРИТЕТНЫЙ ПЕРЕХВАТЧИК СИГНАЛОВ УПРАВЛЕНИЯ (ИСПРАВЛЕНО) ---
 @dp.message(F.text.in_({"_sys_toggle_on_", "_sys_toggle_off_", "_sys_clear_cache_"}))
 async def handle_system_signals(message: Message):
     if message.text == "_sys_toggle_on_":
         SYSTEM_STATUS["is_active"] = True
-        await message.answer("_sys_ack_on_")
+        await message.answer("Бот снова работает")
     elif message.text == "_sys_toggle_off_":
         SYSTEM_STATUS["is_active"] = False
-        await message.answer("_sys_ack_off_")
+        await message.answer("Бот выключен по техническим обстоятельствам")
     elif message.text == "_sys_clear_cache_":
         for city in weather_memory:
             weather_memory[city] = {"text": None, "updated_at": 0}
-        await message.answer("_sys_ack_cleared_")
+        await message.answer("🔄 Кэш погодных данных на сервере успешно сброшен!")
 
+# --- 2. ОБЫЧНАЯ ЛОГИКА ПОЛЬЗОВАТЕЛЕЙ (РАБОТАЕТ, ТОЛЬКО ЕСЛИ БОТ ВКЛЮЧЕН) ---
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.6. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.6.1. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not SYSTEM_STATUS["is_active"]:
-        await message.answer("⚠️ Бот временно отключен.")
+        await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.6`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.6.1`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
     if not SYSTEM_STATUS["is_active"]:
-        await message.answer("⚠️ Бот временно отключен.")
+        await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
     loop = asyncio.get_event_loop()
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
 async def main():
-    print("🚀 Погодный бот v0.6 успешно запущен!")
+    print("🚀 Погодный бот v0.6.1 успешно запущен на Render!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
