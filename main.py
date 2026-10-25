@@ -9,7 +9,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart, Command
 
 # --- ТВОЙ ОБНОВЛЕННЫЙ ТОКЕН TELEGRAM ПОГОДНОГО БОТА ---
-BOT_TOKEN = "8828936622:AAGD-A3xKsg0axPSCWZ4nWPCMtEyYCqRqI4".strip()
+BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
