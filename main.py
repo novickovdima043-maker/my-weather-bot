@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart, Command
 
-# --- ТВОЙ ОБНОВЛЕННЫЙ ТОКЕН TELEGRAM ПОГОДНОГО БОТА ---
+# --- ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
 
 bot = Bot(token=BOT_TOKEN)
@@ -30,16 +30,18 @@ weather_keyboard = ReplyKeyboardMarkup(
 
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 
+# Глобальная память для фиксации погоды на 1 час
 weather_memory = {
-    "Москва": {"today": None, "tomorrow": None, "updated_at": 0},
-    "Зеленоград": {"today": None, "tomorrow": None, "updated_at": 0},
-    "Санкт-Петербург": {"today": None, "tomorrow": None, "updated_at": 0},
-    "Екатеринбург": {"today": None, "tomorrow": None, "updated_at": 0},
-    "Поварово": {"today": None, "tomorrow": None, "updated_at": 0}
+    "Москва": {"text": None, "updated_at": 0},
+    "Зеленоград": {"text": None, "updated_at": 0},
+    "Санкт-Петербург": {"text": None, "updated_at": 0},
+    "Екатеринбург": {"text": None, "updated_at": 0},
+    "Поварово": {"text": None, "updated_at": 0}
 }
 LIFETIME = 3600
 
-def generate_stable_weather(city_name: str, day_type: str = "today") -> str:
+# Внутренний генератор одиночной карточки дня
+def make_day_report(city_name: str, day_type: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
         real_current_temp = random.randint(1, 4) if day_type == "today" else random.randint(0, 3)
         sunrise_time = "07:18" if day_type == "today" else "07:20"
@@ -89,19 +91,36 @@ def generate_stable_weather(city_name: str, day_type: str = "today") -> str:
         f"🌙 Ночью: {range_night}°C\n"
         f"🌅 Утром: {range_morning}°C\n"
         f"☀️ Днем: {range_day}°C\n"
-        f"🌆 Вечером: {range_evening}°C\n"
+        f"🌆 Вечером: {range_evening}°C"
+    )
+
+# Объединяем оба дня в одно неделимое сообщение, чтобы избежать дублирования
+def generate_combined_report(city_name: str) -> str:
+    report_today = make_day_report(city_name, "today")
+    report_tomorrow = make_day_report(city_name, "tomorrow")
+    
+    return (
+        f"{report_today}\n"
+        f"─────────────────────\n"
+        f"─────────────────────\n"
+        f"{report_tomorrow}\n"
         f"─────────────────────"
     )
 
-def get_cached_weather(city_name: str, day_type: str = "today") -> str:
+def get_cached_weather(city_name: str) -> str:
     current_time = time.time()
     city_data = weather_memory.get(city_name)
-    if city_data[day_type] and (current_time - city_data["updated_at"] < LIFETIME):
-        return city_data[day_type]
-    city_data["today"] = generate_stable_weather(city_name, "today")
-    city_data["tomorrow"] = generate_stable_weather(city_name, "tomorrow")
-    city_data["updated_at"] = current_time
-    return city_data[day_type]
+    
+    # Если данные сохранены и 1 час не прошел — выдаем зафиксированный полный текст
+    if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
+        return city_data["text"]
+        
+    # Если час прошел — генерируем новую суточную связку
+    combined_text = generate_combined_report(city_name)
+    weather_memory[city_name]["text"] = combined_text
+    weather_memory[city_name]["updated_at"] = current_time
+    
+    return combined_text
 
 def check_bot_active(message: Message) -> bool:
     if not SYSTEM_STATUS["is_active"]:
@@ -114,14 +133,14 @@ async def cmd_start(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.1. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.1`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
@@ -129,10 +148,9 @@ async def send_weather(message: Message):
         await message.answer("⚠️ Бот временно отключен.")
         return
     loop = asyncio.get_event_loop()
-    weather_today = await loop.run_in_executor(None, get_cached_weather, message.text, "today")
-    await message.answer(weather_today)
-    weather_tomorrow = await loop.run_in_executor(None, get_cached_weather, message.text, "tomorrow")
-    await message.answer(weather_tomorrow, reply_markup=weather_keyboard)
+    # Получаем слитный текст (Сегодня + Завтра) и отправляем строго ОДНИМ сообщением
+    weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
+    await message.answer(weather_report, reply_markup=weather_keyboard)
 
 # --- ИНТЕРНЕТ-ШЛЮЗ ДЛЯ ДИСТАНЦИОННОГО УПРАВЛЕНИЯ ИЗ БОТА-ПУЛЬТА ---
 class RemoteAdminServer(BaseHTTPRequestHandler):
@@ -154,7 +172,7 @@ class RemoteAdminServer(BaseHTTPRequestHandler):
             
         elif "/clear" in self.path:
             for city in weather_memory:
-                weather_memory[city] = {"today": None, "tomorrow": None, "updated_at": 0}
+                weather_memory[city] = {"text": None, "updated_at": 0}
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"cleared")
@@ -165,7 +183,7 @@ class RemoteAdminServer(BaseHTTPRequestHandler):
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), RemoteAdminServer)
-    server.forever()
+    server.serve_forever()
 
 async def main():
     threading.Thread(target=run_health_server, daemon=True).start()
