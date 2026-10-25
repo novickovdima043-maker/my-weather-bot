@@ -14,10 +14,7 @@ BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
-SYSTEM_STATUS = {"is_active": True}
-users_database = set()
-
+# Создание нижнего меню с кнопками
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Москва"), KeyboardButton(text="Зеленоград")],
@@ -40,43 +37,56 @@ weather_memory = {
 }
 LIFETIME = 3600
 
-# Внутренний генератор одиночной карточки дня
-def make_day_report(city_name: str, day_type: str) -> str:
+# Автономный генератор одиночной карточки строго на Сегодня
+def generate_stable_weather(city_name: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
-        real_current_temp = random.randint(1, 4) if day_type == "today" else random.randint(0, 3)
-        sunrise_time = "07:18" if day_type == "today" else "07:20"
-        sunset_time = "17:12" if day_type == "today" else "17:10"
+        real_current_temp = random.randint(1, 4)
+        sunrise_time = "07:18"
+        sunset_time = "17:12"
         humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
-        real_current_temp = random.randint(2, 5) if day_type == "today" else random.randint(1, 4)
-        sunrise_time = "07:42" if day_type == "today" else "07:44"
-        sunset_time = "17:21" if day_type == "today" else "17:18"
+        real_current_temp = random.randint(2, 5)
+        sunrise_time = "07:42"
+        sunset_time = "17:21"
         humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
-        real_current_temp = random.randint(-3, 1) if day_type == "today" else random.randint(-4, 0)
-        sunrise_time = "07:38" if day_type == "today" else "07:40"
-        sunset_time = "17:19" if day_type == "today" else "17:16"
+        real_current_temp = random.randint(-3, 1)
+        sunrise_time = "07:38"
+        sunset_time = "17:19"
         humidity = random.randint(70, 85)
     else:
-        real_current_temp = random.randint(3, 6) if day_type == "today" else random.randint(2, 5)
-        sunrise_time = "07:16" if day_type == "today" else "07:18"
-        sunset_time = "17:14" if day_type == "today" else "17:11"
+        real_current_temp = random.randint(3, 6)  # Москва
+        sunrise_time = "07:16"
+        sunset_time = "17:14"
         humidity = random.randint(82, 94)
         
+    # Математические правила: +2°C к базе, -2°C к ощущениям
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
-    range_night = f"{base_temp - 5}–{base_temp - 2}"
-    range_morning = f"{base_temp - 2}–{base_temp}"
-    range_day = f"{base_temp}–{base_temp + 3}"
-    range_evening = f"{base_temp - 3}–{base_temp - 1}"
+    
+    # Рассчитываем суточную сетку диапазонов температур
+    temp_night_min = base_temp - random.randint(4, 5)
+    temp_night_max = base_temp - random.randint(2, 3)
+    range_night = f"{temp_night_min}–{temp_night_max}"
+    
+    temp_morning_min = base_temp - random.randint(2, 3)
+    temp_morning_max = base_temp + random.randint(0, 1)
+    range_morning = f"{temp_morning_min}–{temp_morning_max}"
+    
+    temp_day_min = base_temp - random.randint(0, 1)
+    temp_day_max = base_temp + random.randint(2, 3)
+    range_day = f"{temp_day_min}–{temp_day_max}"
+    
+    temp_evening_min = base_temp - random.randint(3, 4)
+    temp_evening_max = base_temp - random.randint(1, 2)
+    range_evening = f"{temp_evening_min}–{temp_evening_max}"
     
     wind_speed = round(random.uniform(2.8, 5.5), 1)
     pressure = random.randint(742, 751)
     status = random.choice(WEATHER_STATUSES)
-    day_title = "Сегодня" if day_type == "today" else "Завтра"
 
     return (
-        f"🌍 Погода в: **{city_name}** ({day_title})\n"
+        f"🌍 Погода в: **{city_name}** (Сегодня)\n"
         f"─────────────────────\n"
         f"🌡 Сейчас: {base_temp}°C\n"
         f"🌡 Ощущается как: {feels_like}°C\n"
@@ -91,19 +101,7 @@ def make_day_report(city_name: str, day_type: str) -> str:
         f"🌙 Ночью: {range_night}°C\n"
         f"🌅 Утром: {range_morning}°C\n"
         f"☀️ Днем: {range_day}°C\n"
-        f"🌆 Вечером: {range_evening}°C"
-    )
-
-# Объединяем оба дня в одно неделимое сообщение, чтобы избежать дублирования
-def generate_combined_report(city_name: str) -> str:
-    report_today = make_day_report(city_name, "today")
-    report_tomorrow = make_day_report(city_name, "tomorrow")
-    
-    return (
-        f"{report_today}\n"
-        f"─────────────────────\n"
-        f"─────────────────────\n"
-        f"{report_tomorrow}\n"
+        f"🌆 Вечером: {range_evening}°C\n"
         f"─────────────────────"
     )
 
@@ -111,16 +109,16 @@ def get_cached_weather(city_name: str) -> str:
     current_time = time.time()
     city_data = weather_memory.get(city_name)
     
-    # Если данные сохранены и 1 час не прошел — выдаем зафиксированный полный текст
+    # КЭШ: Если 1 час не прошел — выдаем сохраненный текст
     if city_data["text"] and (current_time - city_data["updated_at"] < LIFETIME):
         return city_data["text"]
         
-    # Если час прошел — генерируем новую суточную связку
-    combined_text = generate_combined_report(city_name)
-    weather_memory[city_name]["text"] = combined_text
+    # Если час прошел — генерируем одну карточку строго на один день
+    fresh_report = generate_stable_weather(city_name)
+    weather_memory[city_name]["text"] = fresh_report
     weather_memory[city_name]["updated_at"] = current_time
     
-    return combined_text
+    return fresh_report
 
 def check_bot_active(message: Message) -> bool:
     if not SYSTEM_STATUS["is_active"]:
@@ -133,14 +131,14 @@ async def cmd_start(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.1. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.4.3. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not check_bot_active(message):
         await message.answer("⚠️ Бот временно отключен.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.1`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.4.3`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
@@ -148,7 +146,6 @@ async def send_weather(message: Message):
         await message.answer("⚠️ Бот временно отключен.")
         return
     loop = asyncio.get_event_loop()
-    # Получаем слитный текст (Сегодня + Завтра) и отправляем строго ОДНИМ сообщением
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
