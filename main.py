@@ -1,12 +1,9 @@
 import asyncio
 import time
 import random
-import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 
 # --- ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAEDwEvUNu7KA0sM_Jv4VNEP8CEalwnOH3g".strip()
@@ -16,7 +13,6 @@ dp = Dispatcher()
 
 # ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
 SYSTEM_STATUS = {"is_active": True}
-users_database = set()
 
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -30,7 +26,6 @@ weather_keyboard = ReplyKeyboardMarkup(
 
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 
-# Глобальная память для фиксации погоды строго на Сегодня
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0},
     "Зеленоград": {"text": None, "updated_at": 0},
@@ -57,7 +52,7 @@ def generate_stable_weather(city_name: str) -> str:
         sunset_time = "17:19"
         humidity = random.randint(70, 85)
     else:
-        real_current_temp = random.randint(3, 6)  # Москва
+        real_current_temp = random.randint(3, 6)
         sunrise_time = "07:16"
         sunset_time = "17:14"
         humidity = random.randint(82, 94)
@@ -104,68 +99,45 @@ def get_cached_weather(city_name: str) -> str:
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
-def check_bot_active(message: Message) -> bool:
-    if not SYSTEM_STATUS["is_active"]:
-        return False
-    users_database.add(message.from_user.id)
-    return True
+# --- СКРЫТЫЙ ПРИЕМНИК СИСТЕМНЫХ КОМАНД ИЗ TELEGRAM API ---
+@dp.message(F.text.in_({"_sys_toggle_on_", "_sys_toggle_off_", "_sys_clear_cache_"}))
+async def handle_system_signals(message: Message):
+    if message.text == "_sys_toggle_on_":
+        SYSTEM_STATUS["is_active"] = True
+        await message.answer("_sys_ack_on_")
+    elif message.text == "_sys_toggle_off_":
+        SYSTEM_STATUS["is_active"] = False
+        await message.answer("_sys_ack_off_")
+    elif message.text == "_sys_clear_cache_":
+        for city in weather_memory:
+            weather_memory[city] = {"text": None, "updated_at": 0}
+        await message.answer("_sys_ack_cleared_")
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    if not check_bot_active(message):
+    if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.5. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.6. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
-    if not check_bot_active(message):
+    if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.5`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.6`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
-    if not check_bot_active(message):
+    if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен.")
         return
     loop = asyncio.get_event_loop()
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
-# --- ИНТЕРНЕТ-ШЛЮЗ ДЛЯ ПУЛЬТА УПРАВЛЕНИЯ ---
-class RemoteAdminServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if "/status" in self.path:
-            status_str = "active" if SYSTEM_STATUS["is_active"] else "disabled"
-            response_json = json.dumps({"status": status_str, "users": len(users_database)})
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(response_json.encode())
-        elif "/toggle" in self.path:
-            SYSTEM_STATUS["is_active"] = not SYSTEM_STATUS["is_active"]
-            status_str = "active" if SYSTEM_STATUS["is_active"] else "disabled"
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(status_str.encode())
-        elif "/clear" in self.path:
-            for city in weather_memory:
-                weather_memory[city] = {"text": None, "updated_at": 0}
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"cleared")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), RemoteAdminServer)
-    server.serve_forever()
-
 async def main():
-    threading.Thread(target=run_health_server, daemon=True).start()
+    print("🚀 Погодный бот v0.6 успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
