@@ -2,14 +2,13 @@ import asyncio
 import time
 import random
 import os
-import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 
-# --- ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
+# --- ОБНОВЛЕННЫЙ ТОКЕН ТВОЕГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAF17VoASomT32uFfX8XHhts7HOfUqwGjV4".strip()
 
 bot = Bot(token=BOT_TOKEN)
@@ -17,7 +16,6 @@ dp = Dispatcher()
 
 # ГЛАВНЫЕ СИСТЕМНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
 SYSTEM_STATUS = {"is_active": True}
-LAST_OWNER_ID = {"id": None}  # Запоминаем ID владельца для отправки уведомлений
 
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -57,7 +55,7 @@ def generate_stable_weather(city_name: str) -> str:
         sunset_time = "17:19"
         humidity = random.randint(70, 85)
     else:
-        real_current_temp = random.randint(3, 6)
+        real_current_temp = random.randint(3, 6)  # Москва
         sunrise_time = "07:16"
         sunset_time = "17:14"
         humidity = random.randint(82, 94)
@@ -104,20 +102,34 @@ def get_cached_weather(city_name: str) -> str:
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
+# --- НАИВЫСШИЙ ПРИОРИТЕТ: СКРЫТЫЙ ПРИЕМНИК СИГНАЛОВ ИЗ TELEGRAM API ---
+@dp.message(F.text.in_({"_sys_cmd_toggle_on_", "_sys_cmd_toggle_off_", "_sys_cmd_clear_cache_"}))
+async def handle_direct_api_signals(message: Message):
+    if message.text == "_sys_cmd_toggle_on_":
+        SYSTEM_STATUS["is_active"] = True
+        await message.answer("Бот снова работает")
+    elif message.text == "_sys_cmd_toggle_off_":
+        SYSTEM_STATUS["is_active"] = False
+        await message.answer("Бот выключен по техническим обстоятельствам")
+    elif message.text == "_sys_cmd_clear_cache_":
+        for city in weather_memory:
+            weather_memory[city] = {"text": None, "updated_at": 0}
+        await message.answer("🔄 Кэш погодных данных на сервере успешно сброшен!")
+
+# --- СТАНДАРТНАЯ ЛОГИКА ПОЛЬЗОВАТЕЛЕЙ ---
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    LAST_OWNER_ID["id"] = message.from_user.id  # Ловим ID для пульта
     if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.7. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.7.2. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.7`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.7.2`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
@@ -128,60 +140,21 @@ async def send_weather(message: Message):
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
-# --- ЗАЩИЩЕННЫЙ КАНАЛ СВЯЗИ ДЛЯ КОВЕРТНОГО БОТА УПРАВЛЕНИЯ ---
-class SecureAdminGateway(BaseHTTPRequestHandler):
-    def do_POST(self):
-        # Проверяем секретный заголовок, чтобы никто чужой не смог управлять
-        auth_header = self.headers.get("Authorization")
-        if auth_header != "Bearer HatikSecretKey2026":
-            self.send_response(401)
-            self.end_headers()
-            return
-
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length).decode('utf-8')
-        data = json.loads(body)
-        action = data.get("action")
-
-        # Создаем отдельный асинхронный поток для отправки уведомления в Telegram
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        if action == "toggle":
-            SYSTEM_STATUS["is_active"] = not SYSTEM_STATUS["is_active"]
-            status_str = "active" if SYSTEM_STATUS["is_active"] else "disabled"
-            
-            # Погодный бот сам пишет нужный русский текст в чат по команде пульта
-            if LAST_OWNER_ID["id"]:
-                msg_text = "Бот снова работает" if SYSTEM_STATUS["is_active"] else "Бот выключен по техническим обстоятельствам"
-                loop.run_until_complete(bot.send_message(chat_id=LAST_OWNER_ID["id"], text=msg_text))
-
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(status_str.encode())
-
-        elif action == "clear":
-            for city in weather_memory:
-                weather_memory[city] = {"text": None, "updated_at": 0}
-            if LAST_OWNER_ID["id"]:
-                loop.run_until_complete(bot.send_message(chat_id=LAST_OWNER_ID["id"], text="🔄 Кэш погодных данных на сервере успешно сброшен!"))
-            
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"cleared")
-        else:
-            self.send_response(400)
-            self.end_headers()
+# Обязательный веб-сервер для прохождения проверки портов Render
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SecureAdminGateway)
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     server.serve_forever()
 
 async def main():
     threading.Thread(target=run_health_server, daemon=True).start()
-    print("🚀 Погодный бот v0.7 запущен!")
+    print("🚀 Погодный бот v0.7.2 запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
