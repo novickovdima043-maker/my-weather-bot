@@ -1,6 +1,9 @@
 import asyncio
 import time
 import random
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import CommandStart
@@ -229,4 +232,5 @@ async def process_admin_callbacks(callback: CallbackQuery):
 
     if callback.data == "adm_toggle":
         bot_status["is_active"] = not bot_status["is_active"]
-        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
+
+        
