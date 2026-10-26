@@ -2,8 +2,7 @@ import asyncio
 import time
 import random
 import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
@@ -14,7 +13,7 @@ BOT_TOKEN = "8828936622:AAF17VoASomT32uFfX8XHhts7HOfUqwGjV4".strip()
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ГЛОБАЛЬНЫЙ ПЕРЕКЛЮЧАТЕЛЬ СТАТУСА БОТА
+# ГЛАВНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ
 SYSTEM_STATUS = {"is_active": True}
 
 weather_keyboard = ReplyKeyboardMarkup(
@@ -41,24 +40,16 @@ LIFETIME = 3600
 def generate_stable_weather(city_name: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
         real_current_temp = random.randint(1, 4)
-        sunrise_time = "07:18"
-        sunset_time = "17:12"
-        humidity = random.randint(82, 94)
+        sunrise_time = "07:18"; sunset_time = "17:12"; humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
         real_current_temp = random.randint(2, 5)
-        sunrise_time = "07:42"
-        sunset_time = "17:21"
-        humidity = random.randint(88, 97)
+        sunrise_time = "07:42"; sunset_time = "17:21"; humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
         real_current_temp = random.randint(-3, 1)
-        sunrise_time = "07:38"
-        sunset_time = "17:19"
-        humidity = random.randint(70, 85)
+        sunrise_time = "07:38"; sunset_time = "17:19"; humidity = random.randint(70, 85)
     else:
         real_current_temp = random.randint(3, 6)
-        sunrise_time = "07:16"
-        sunset_time = "17:14"
-        humidity = random.randint(82, 94)
+        sunrise_time = "07:16"; sunset_time = "17:14"; humidity = random.randint(82, 94)
         
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
@@ -100,29 +91,21 @@ def get_cached_weather(city_name: str) -> str:
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
-# --- ПРИЕМ СИГНАЛОВ УПРАВЛЕНИЯ ЧЕРЕЗ СИСТЕМНЫЙ СЕРВЕР RENDER ---
-class WebControlGateway(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if "toggle_off" in self.path:
-            SYSTEM_STATUS["is_active"] = False
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"disabled")
-        elif "toggle_on" in self.path:
-            SYSTEM_STATUS["is_active"] = True
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"active")
-        elif "clear_cache" in self.path:
-            for city in weather_memory:
-                weather_memory[city] = {"text": None, "updated_at": 0}
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"cleared")
-        else:
-            self.send_response(404)
-            self.end_headers()
+# --- ОБРАБОТЧИКИ ДЛЯ ПУЛЬТА ЧЕРЕЗ АСИНХРОННЫЙ АПИ-ШЛЮЗ ---
+async def handle_toggle_off(request):
+    SYSTEM_STATUS["is_active"] = False
+    return web.Response(text="disabled")
 
+async def handle_toggle_on(request):
+    SYSTEM_STATUS["is_active"] = True
+    return web.Response(text="active")
+
+async def handle_clear_cache(request):
+    for city in weather_memory:
+        weather_memory[city] = {"text": None, "updated_at": 0}
+    return web.Response(text="cleared")
+
+# --- СТАНДАРТНАЯ ЛОГИКА ПОЛЬЗОВАТЕЛЕЙ ---
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     if not SYSTEM_STATUS["is_active"]:
@@ -146,14 +129,20 @@ async def send_weather(message: Message):
     weather_report = await loop.run_in_executor(None, get_cached_weather, message.text)
     await message.answer(weather_report, reply_markup=weather_keyboard)
 
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), WebControlGateway)
-    server.serve_forever()
-
 async def main():
-    threading.Thread(target=run_health_server, daemon=True).start()
-    print("🚀 Погодный бот успешно запущен!")
+    # Запускаем асинхронный веб-сервер параллельно с ботом в одном потоке
+    app = web.Application()
+    app.router.add_get('/toggle_off', handle_toggle_off)
+    app.router.add_get('/toggle_on', handle_toggle_on)
+    app.router.add_get('/clear_cache', handle_clear_cache)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    
+    print("🚀 Асинхронный погодный бот успешно запущен на Render!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
