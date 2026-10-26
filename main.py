@@ -21,20 +21,20 @@ CODE_TECH_ADMIN = "M3I6S8H1K5O4"
 # ГЛАВНЫЕ ПЕРЕМЕННЫЕ УПРАВЛЕНИЯ БОТОМ
 bot_status = {"is_active": True}
 
-# База авторизованных сессий (сохраняется в памяти до перезапуска сервера)
+# База авторизованных сессий (сохраняется в памяти сервера)
 admin_sessions = {
-    "owner_id": None,             # Telegram ID Владельца (Hatik)
-    "tech_admin_id": None,        # Telegram ID Технического администратора
-    "is_tech_allowed": True       # Флаг: Разрешен ли доступ тех. админу
+    "owner_id": None,             # ID Владельца (Hatik)
+    "tech_admin_id": None,        # ID Технического администратора
+    "is_tech_allowed": True       # Флаг доступа тех. админа
 }
 
 # Текущее состояние ожидания пароля пользователем
 user_waiting_for_code = {}
 
 # =====================================================================
-# --- КЛАВИАТУРЫ И ИНТЕРФЕЙС СИСТЕМЫ ---
+# --- ИНТЕРФЕЙС И КЛАВИАТУРЫ ---
 # =====================================================================
-# Главное Reply-меню кнопок (Добавлена кнопка Система)
+# Главное Reply-меню кнопок городов с кнопкой Система
 weather_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Москва"), KeyboardButton(text="Зеленоград")],
@@ -45,29 +45,25 @@ weather_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Инлайновая админ-панель (Строго как на фото, без статистики, с Выходом)
+# Инлайновая админ-панель (Строго по структуре с твоего фото)
 def get_inline_admin_panel(user_id):
     status_text = "🔴 Выключить бота" if bot_status["is_active"] else "🟢 Включить бота"
-    allowed_text = "🔒 Блокировать тех. админа" if admin_system_status_allowed(user_id) else "🔓 Разблокировать тех. админа"
+    allowed_text = "🔒 Блокировать тех. админа" if admin_sessions["is_tech_allowed"] else "🔓 Разблокировать тех. админа"
     
     keyboard_buttons = [
-        [InlineKeyboardButton(text=status_text, callback_data="adm_toggle")],
-        [InlineKeyboardButton(text="🔄 Перезагрузить кэш", callback_data="adm_clear_cache")]
+        [InlineKeyboardButton(text=status_text, callback_data="adm_toggle")]
     ]
     
-    # Только Владелец (Hatik) видит инлайн-кнопку бана тех. админа
+    # Только Владелец (Hatik) видит и может переключать кнопку бана тех. админа
     if user_id == admin_sessions["owner_id"]:
         keyboard_buttons.append([InlineKeyboardButton(text=allowed_text, callback_data="adm_lock_tech")])
         
-    # Кнопка Выхода присутствует всегда в самом низу
+    # Кнопка сброса кэша погоды и кнопка Выхода
+    keyboard_buttons.append([InlineKeyboardButton(text="🔄 Перезагрузить кэш", callback_data="adm_clear_cache")])
     keyboard_buttons.append([InlineKeyboardButton(text="🚪 Выйти из аккаунта", callback_data="adm_logout")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
-def admin_system_status_allowed(user_id):
-    return admin_sessions["is_tech_allowed"]
-
-# Проверка роли текущего пользователя
 def get_user_role(user_id):
     if user_id == admin_sessions["owner_id"]:
         return "owner"
@@ -77,15 +73,14 @@ def get_user_role(user_id):
         return "blocked"
     return "guest"
 
-# Проверка глобальной активности бота для обычных людей
 def is_bot_available_for_user(user_id):
     role = get_user_role(user_id)
     if role in ["owner", "tech_admin"]:
-        return True  # Администрация имеет доступ к кнопкам всегда
+        return True  # Админы всегда имеют доступ к кнопкам погоды
     return bot_status["is_active"]
 
 # =====================================================================
-# --- ЛОГИКА ПОГОДНОГО МОДУЛЯ ---
+# --- ПОГОДНЫЙ МОДУЛЬ (ЧИСТЫЙ ВЫВОД НА СЕГОДНЯ) ---
 # =====================================================================
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 
@@ -151,60 +146,54 @@ def get_cached_weather(city_name: str) -> str:
     return fresh_report
 
 # =====================================================================
-# --- ОБРАБОТКА ДЕЙСТВИЙ И КОМАНД БОТА ---
+# --- ЛОГИКА МЕНЮ СИСТЕМЫ И ВВОДА КОДОВ ---
 # =====================================================================
-
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     if not is_bot_available_for_user(message.from_user.id):
         await message.answer("⚠️ Бот выключен по техническим обстоятельствам")
         return
     user_waiting_for_code[message.from_user.id] = False
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v2.5. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v1.0. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
-# Нажатие на кнопку Система
 @dp.message(F.text == "⚙️ Система")
 async def process_system_click(message: Message):
     user_id = message.from_user.id
     role = get_user_role(user_id)
     
-    # Если админ уже авторизован — просто выкатываем ему пульт заново
     if role in ["owner", "tech_admin"]:
         role_title = "Владелец (Hatik)" if role == "owner" else "Технический администратор"
-        await message.answer(f"🎛 Панель управления активна!\nВы вошли как: **{role_title}**", reply_markup=get_inline_admin_panel(user_id))
+        await message.answer(f"Показываю клавиатуру\nВы вошли как: **{role_title}**", reply_markup=get_inline_admin_panel(user_id))
         return
         
     user_waiting_for_code[user_id] = True
     await message.answer("🔒 Доступ ограничен. Введите секретную код-фразу для входа в панель управления:")
 
-# Обработка ввода текстового пароля
 @dp.message(F.text)
 async def handle_text_inputs(message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
     
-    # Проверяем, ждет ли бот от этого юзера ввода секретного кода
     if user_waiting_for_code.get(user_id):
         if text == CODE_OWNER:
             admin_sessions["owner_id"] = user_id
             user_waiting_for_code[user_id] = False
-            await message.answer("👑 Авторизация успешна! Добро пожаловать, Владелец (Hatik).", reply_markup=get_inline_admin_panel(user_id))
+            await message.answer("Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
             return
         elif text == CODE_TECH_ADMIN:
             if not admin_sessions["is_tech_allowed"]:
-                await message.answer("❌ Вход заблокирован. Владелец проекта закрыл доступ для технических администраторов.")
+                await message.answer("❌ Вход заблокирован Владельцем проекта.")
                 user_waiting_for_code[user_id] = False
                 return
             admin_sessions["tech_admin_id"] = user_id
             user_waiting_for_code[user_id] = False
-            await message.answer("🛠 Авторизация успешна! Доступ предоставлен Техническому администратору.", reply_markup=get_admin_keyboard_or_panel_inline(user_id))
+            await message.answer("Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
             return
         else:
-            await message.answer("❌ Неверная код-фраза. Доступ отклонен. Попробуйте еще раз или выберите город на кнопках:")
+            await message.answer("❌ Неверная код-фразу. Доступ отклонен.")
             user_waiting_for_code[user_id] = False
             return
 
-    # Обычная логика кнопок городов
     if not is_bot_available_for_user(user_id):
         await message.answer("⚠️ Бот выключен по техническим обстоятельствам")
         return
@@ -214,14 +203,26 @@ async def handle_text_inputs(message: Message):
         weather_report = await loop.run_in_executor(None, get_cached_weather, text)
         await message.answer(weather_report, reply_markup=weather_keyboard)
     elif text == "Информация":
-        await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v2.5`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
-
-def get_admin_keyboard_or_panel_inline(user_id):
-    return get_inline_admin_panel(user_id)
+        await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 # =====================================================================
-# --- ЛОГИКА НАЖАТИЙ НА INLINE-КНОПКИ ПАНЕЛИ (CALLBACK QUERIES) ---
+# --- ОБРАБОТКА ИНЛАЙН НАЖАТИЙ (ОТВЕТЫ ИЗ ФОТОГРАФИИ) ---
 # =====================================================================
 @dp.callback_query()
 async def process_admin_callbacks(callback: CallbackQuery):
     user_id = callback.from_user.id
+    role = get_user_role(user_id)
+    
+    if role not in ["owner", "tech_admin"]:
+        await callback.answer("❌ Ошибка доступа.", show_alert=True)
+        return
+
+    # 1. Нажатие кнопки ТРИГГЕРА ВКЛ/ВЫКЛ
+    if callback.data == "adm_toggle":
+        bot_status["is_active"] = not bot_status["is_active"]
+        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
+        await callback.answer(f"📢 Смена статуса: {status_str}", show_alert=True)
+        # Перерисовываем текст на кнопке инлайн прямо на экране
+        await callback.message.edit_reply_markup(reply_markup=get_inline_admin_panel(user_id))
+        
+    # 2. Нажатие кнопки ОБНУЛЕНИЯ КЭША ПОГОДЫ
