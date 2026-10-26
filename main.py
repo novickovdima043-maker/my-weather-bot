@@ -1,8 +1,6 @@
 import asyncio
 import time
 import random
-import os
-from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import CommandStart
@@ -44,7 +42,7 @@ weather_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Инлайновая админ-панель (Строго по структуре с фотографии)
+# Инлайновая админ-панель (Строго по структуре с твоей фотографии)
 def get_inline_admin_panel(user_id):
     status_text = "🔴 Выключить бота" if bot_status["is_active"] else "🟢 Включить бота"
     allowed_text = "🔒 Блокировать тех. админа" if admin_sessions["is_tech_allowed"] else "🔓 Разблокировать тех. админа"
@@ -93,24 +91,16 @@ LIFETIME = 3600
 def generate_stable_weather(city_name: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
         real_current_temp = random.randint(1, 4)
-        sunrise_time = "07:18"
-        sunset_time = "17:12"
-        humidity = random.randint(82, 94)
+        sunrise_time = "07:18"; sunset_time = "17:12"; humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
         real_current_temp = random.randint(2, 5)
-        sunrise_time = "07:42"
-        sunset_time = "17:21"
-        humidity = random.randint(88, 97)
+        sunrise_time = "07:42"; sunset_time = "17:21"; humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
         real_current_temp = random.randint(-3, 1)
-        sunrise_time = "07:38"
-        sunset_time = "17:19"
-        humidity = random.randint(70, 85)
+        sunrise_time = "07:38"; sunset_time = "17:19"; humidity = random.randint(70, 85)
     else:
         real_current_temp = random.randint(3, 6)
-        sunrise_time = "07:16"
-        sunset_time = "17:14"
-        humidity = random.randint(82, 94)
+        sunrise_time = "07:16"; sunset_time = "17:14"; humidity = random.randint(82, 94)
         
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
@@ -239,6 +229,4 @@ async def process_admin_callbacks(callback: CallbackQuery):
 
     if callback.data == "adm_toggle":
         bot_status["is_active"] = not bot_status["is_active"]
-
-
-   
+        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
