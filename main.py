@@ -2,8 +2,7 @@ import asyncio
 import time
 import random
 import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import CommandStart
@@ -188,7 +187,7 @@ async def process_system_click(message: Message):
         return
         
     user_waiting_for_code[user_id] = True
-    await message.answer("🔒 Доступ ограничен. Введите секретную код-фразу для входа в dynamic пульт управления:")
+    await message.answer("🔒 Доступ ограничен. Введите секретную код-фразу для входа в пульт управления:")
 
 @dp.message(F.text)
 async def handle_text_inputs(message: Message):
@@ -227,7 +226,7 @@ async def handle_text_inputs(message: Message):
         await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 # =====================================================================
-# --- ОБРАБОТКА ИНЛАЙН НАЖАТИЙ (ОТСТУПЫ СТРОГО ИСПРАВЛЕНЫ) ---
+# --- ОБРАБОТКА ИНЛАЙН НАЖАТИЙ ---
 # =====================================================================
 @dp.callback_query()
 async def process_admin_callbacks(callback: CallbackQuery):
@@ -238,6 +237,8 @@ async def process_admin_callbacks(callback: CallbackQuery):
         await callback.answer("❌ Ошибка доступа.", show_alert=True)
         return
 
-    # 1. Кнопка ВКЛ / ВЫКЛ бота
+    if callback.data == "adm_toggle":
+        bot_status["is_active"] = not bot_status["is_active"]
+
 
    
