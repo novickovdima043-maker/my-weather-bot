@@ -240,5 +240,4 @@ async def process_admin_callbacks(callback: CallbackQuery):
     if callback.data == "adm_toggle":
         bot_status["is_active"] = not bot_status["is_active"]
 
-
    
