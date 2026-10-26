@@ -55,7 +55,7 @@ def generate_stable_weather(city_name: str) -> str:
         sunset_time = "17:19"
         humidity = random.randint(70, 85)
     else:
-        real_current_temp = random.randint(3, 6)
+        real_current_temp = random.randint(3, 6)  # Москва
         sunrise_time = "07:16"
         sunset_time = "17:14"
         humidity = random.randint(82, 94)
@@ -122,14 +122,14 @@ async def cmd_start(message: Message):
     if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v0.8.1. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот версии v1.1. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "Информация")
 async def send_info(message: Message):
     if not SYSTEM_STATUS["is_active"]:
         await message.answer("⚠️ Бот временно отключен на техническое обслуживание.")
         return
-    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v0.8.1`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
+    await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v1.1`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 @dp.message(F.text.in_({"Москва", "Зеленоград", "Санкт-Петербург", "Екатеринбург", "Поварово"}))
 async def send_weather(message: Message):
@@ -154,8 +154,9 @@ def run_health_server():
 
 async def main():
     threading.Thread(target=run_health_server, daemon=True).start()
-    print("🚀 Погодный бот v0.8.1 запущен!")
+    print("🚀 Погодный бот v1.1 запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
