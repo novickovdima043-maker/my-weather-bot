@@ -45,7 +45,7 @@ weather_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Инлайновая админ-панель (Строго по структуре с твоего фото)
+# Инлайновая админ-панель (Строго по структуре с фотографии)
 def get_inline_admin_panel(user_id):
     status_text = "🔴 Выключить бота" if bot_status["is_active"] else "🟢 Включить бота"
     allowed_text = "🔒 Блокировать тех. админа" if admin_sessions["is_tech_allowed"] else "🔓 Разблокировать тех. админа"
@@ -94,23 +94,45 @@ LIFETIME = 3600
 def generate_stable_weather(city_name: str) -> str:
     if city_name in ["Зеленоград", "Поварово"]:
         real_current_temp = random.randint(1, 4)
-        sunrise_time = "07:18"; sunset_time = "17:12"; humidity = random.randint(82, 94)
+        sunrise_time = "07:18"
+        sunset_time = "17:12"
+        humidity = random.randint(82, 94)
     elif city_name == "Санкт-Петербург":
         real_current_temp = random.randint(2, 5)
-        sunrise_time = "07:42"; sunset_time = "17:21"; humidity = random.randint(88, 97)
+        sunrise_time = "07:42"
+        sunset_time = "17:21"
+        humidity = random.randint(88, 97)
     elif city_name == "Екатеринбург":
         real_current_temp = random.randint(-3, 1)
-        sunrise_time = "07:38"; sunset_time = "17:19"; humidity = random.randint(70, 85)
+        sunrise_time = "07:38"
+        sunset_time = "17:19"
+        humidity = random.randint(70, 85)
     else:
         real_current_temp = random.randint(3, 6)
-        sunrise_time = "07:16"; sunset_time = "17:14"; humidity = random.randint(82, 94)
+        sunrise_time = "07:16"
+        sunset_time = "17:14"
+        humidity = random.randint(82, 94)
         
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
-    range_night = f"{base_temp - 5}–{base_temp - 2}"
-    range_morning = f"{base_temp - 2}–{base_temp}"
-    range_day = f"{base_temp}–{base_temp + 3}"
-    range_evening = f"{base_temp - 3}–{base_temp - 1}"
+    
+    # ИСПРАВЛЕНО: Математические диапазоны суток зафиксированы без опечаток
+    temp_night_min = base_temp - random.randint(4, 5)
+    temp_night_max = base_temp - random.randint(2, 3)
+    range_night = f"{temp_night_min}–{temp_night_max}"
+    
+    temp_morning_min = base_temp - random.randint(2, 3)
+    temp_morning_max = base_temp + random.randint(0, 1)
+    range_morning = f"{temp_morning_min}–{temp_morning_max}"
+    
+    temp_day_min = base_temp - random.randint(0, 1)
+    temp_day_max = base_temp + random.randint(2, 3)
+    range_day = f"{temp_day_min}–{temp_day_max}"
+    
+    temp_evening_min = base_temp - random.randint(3, 4)
+    temp_evening_max = base_temp - random.randint(1, 2)
+    range_evening = f"{temp_evening_min}–{temp_evening_max}"
+    
     wind_speed = round(random.uniform(2.8, 5.5), 1)
     pressure = random.randint(742, 751)
     status = random.choice(WEATHER_STATUSES)
@@ -154,7 +176,7 @@ async def cmd_start(message: Message):
         await message.answer("⚠️ Бот выключен по техническим обстоятельствам")
         return
     user_waiting_for_code[message.from_user.id] = False
-    await message.answer("Привет! Я твой чистый автономный погодный бот версии v1.0. Выберите город ниже 👇", reply_markup=weather_keyboard)
+    await message.answer("Привет! Я твой чистый автономный погодный бот. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
 @dp.message(F.text == "⚙️ Система")
 async def process_system_click(message: Message):
@@ -190,7 +212,7 @@ async def handle_text_inputs(message: Message):
             await message.answer("Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
             return
         else:
-            await message.answer("❌ Неверная код-фразу. Доступ отклонен.")
+            await message.answer("❌ Неверная код-фраза. Доступ отклонен.")
             user_waiting_for_code[user_id] = False
             return
 
@@ -206,7 +228,7 @@ async def handle_text_inputs(message: Message):
         await message.answer("ℹ️ **Информация о боте**\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: **Hatik**\n─────────────────────", reply_markup=weather_keyboard)
 
 # =====================================================================
-# --- ОБРАБОТКА ИНЛАЙН НАЖАТИЙ (ОТВЕТЫ ИЗ ФОТОГРАФИИ) ---
+# --- ОБРАБОТКА ИНЛАЙН НАЖАТИЙ ---
 # =====================================================================
 @dp.callback_query()
 async def process_admin_callbacks(callback: CallbackQuery):
@@ -217,12 +239,3 @@ async def process_admin_callbacks(callback: CallbackQuery):
         await callback.answer("❌ Ошибка доступа.", show_alert=True)
         return
 
-    # 1. Нажатие кнопки ТРИГГЕРА ВКЛ/ВЫКЛ
-    if callback.data == "adm_toggle":
-        bot_status["is_active"] = not bot_status["is_active"]
-        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
-        await callback.answer(f"📢 Смена статуса: {status_str}", show_alert=True)
-        # Перерисовываем текст на кнопке инлайн прямо на экране
-        await callback.message.edit_reply_markup(reply_markup=get_inline_admin_panel(user_id))
-        
-    # 2. Нажатие кнопки ОБНУЛЕНИЯ КЭША ПОГОДЫ
