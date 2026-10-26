@@ -116,7 +116,6 @@ def generate_stable_weather(city_name: str) -> str:
     base_temp = real_current_temp + 2
     feels_like = base_temp - 2
     
-    # ИСПРАВЛЕНО: Математические диапазоны суток зафиксированы без опечаток
     temp_night_min = base_temp - random.randint(4, 5)
     temp_night_max = base_temp - random.randint(2, 3)
     range_night = f"{temp_night_min}–{temp_night_max}"
@@ -239,3 +238,4 @@ async def process_admin_callbacks(callback: CallbackQuery):
         await callback.answer("❌ Ошибка доступа.", show_alert=True)
         return
 
+    if callback.data == "adm_toggle":
