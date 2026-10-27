@@ -71,7 +71,7 @@ def generate_stable_weather(city_name):
         f"💨 Ветер: {wind_speed} м/с\n"
         f"🌙 Ночью: {range_night_today}°C | ☀️ Днем: {range_day_today}°C\n"
         f"─────────────────────\n"
-        f"🔮 **ЗАВТРА:**\n"
+        f"🖼️ **ЗАВТРА:**\n"
         f"🌡 Температура: {base_tomorrow}°C (Ощущается как {feels_tomorrow}°C)\n"
         f"📝 Прогноз: {status_tomorrow}\n"
         f"🌙 Ночью: {range_night_tomorrow}°C | ☀️ Днем: {range_day_tomorrow}°C\n"
