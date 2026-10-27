@@ -47,6 +47,12 @@ def get_user_role(user_id):
         return "tech_admin" if admin_sessions["is_tech_allowed"] else "blocked"
     return "guest"
 
+def is_bot_available_for_user(user_id):
+    role = get_user_role(user_id)
+    if role in ["owner", "tech_admin"]:
+        return True  # Админы всегда имеют доступ к кнопкам погоды
+    return bot_status["is_active"]
+
 # --- ПОГОДНЫЙ МОДУЛЬ (СТРОГО НА СЕГОДНЯ) ---
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 weather_memory = {
@@ -160,7 +166,7 @@ def handle_text_inputs(message):
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.8`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
 # --- ОБРАБОТКА НАЖАТИЙ INLINE-КНОПОК ---
 @bot.callback_query_handler(func=lambda call: True)
@@ -198,7 +204,7 @@ def process_admin_callbacks(call):
         bot.answer_callback_query(call.id, "Сессия закрыта. Выход...")
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР ---
+# --- ИСТОРИЧЕСКИЙ ВЕБ-СЕРВЕР ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -206,11 +212,4 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive")
 
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.serve_forever()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_health_server, daemon=True).start()
-
+def run_bot_polling():
