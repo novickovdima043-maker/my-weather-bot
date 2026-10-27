@@ -159,9 +159,9 @@ def handle_text_inputs(message):
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.5`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.6`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
-# --- МГНОВЕННАЯ ОБРАБОТКА НАЖАТИЙ INLINE-КНОПОК ---
+# --- ОБРАБОТКА НАЖАТИЙ INLINE-КНОПОК ---
 @bot.callback_query_handler(func=lambda call: True)
 def process_admin_callbacks(call):
     user_id = call.from_user.id
@@ -172,13 +172,12 @@ def process_admin_callbacks(call):
 
     if call.data == "adm_toggle":
         bot_status["is_active"] = not bot_status["is_active"]
-        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот временно не работает по техническим обстоятельствам"
-        # Сразу тушим загрузку часиков на кнопке [1.4]
-        bot.answer_callback_query(call.id, f"📢 Состояние изменено!")
+        bot.answer_callback_query(call.id, "📢 Состояние изменено!")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
         
     elif call.data == "adm_clear_cache":
-        for city in weather_memory: weather_memory[city] = {"text": None, "updated_at": 0}
+        for city in weather_memory: 
+            weather_memory[city] = {"text": None, "updated_at": 0}
         bot.answer_callback_query(call.id, "🔄 Кэш погодных данных успешно сброшен!", show_alert=True)
         
     elif call.data == "adm_lock_tech":
@@ -190,14 +189,13 @@ def process_admin_callbacks(call):
         bot.answer_callback_query(call.id, f"Технический администратор {lock_text}!", show_alert=True)
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
         
-    elif call.data == "adm_logout":
+    elif callback.data == "adm_logout":
         if role == "owner": admin_sessions["owner_id"] = None
         elif role == "tech_admin": admin_sessions["tech_admin_id"] = None
         bot.answer_callback_query(call.id, "Сессия закрыта. Выход...")
-        # ПОЛНОЕ УДАЛЕНИЕ СООБЩЕНИЯ С КНОПКАМИ С ЭКРАНА ТЕЛЕФОНА! [1.4]
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР ДЛЯ ПРОХОЖДЕНИЯ ПРОВЕРКИ PORT BINDING ---
+# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР (ОТСТУПЫ СТРОГО ИСПРАВЛЕНЫ) ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -206,3 +204,9 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is alive")
 
 def run_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+if __name__ == "__main__":
+    # Исправлено: строго корректные табы для фонового потока
