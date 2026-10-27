@@ -1,13 +1,14 @@
 import time
 import random
+import os
 import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
-# --- ТОКЕН ТВОЕГО ЕДИНСТВЕННОГО ПОГОДНОГО БОТА ---
-BOT_TOKEN = "8828936622:AAF17VoASomT32uFfX8XHhts7HOfUqwGjV4".strip()
+# --- ТВОЙ НОВЫЙ ОБНОВЛЕННЫЙ ТОКЕН ПОГОДНОГО БОТА ---
+BOT_TOKEN = "8828936622:AAHYO1j_x-DTxbUScLKDwlQgKPwAVqoJZT4".strip()
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# Настройки ролей и доступов
+# Настройки текстовых кодов управления экосистемой
 CODE_OWNER_OFF = "H1A7T0I8K6"          # Код выключения для Владельца
 CODE_OWNER_ON = "H1A7T0I8K6_ON"        # Код включения для Владельца
 
@@ -17,17 +18,17 @@ CODE_TECH_ON = "M3I6S8H1K5O4_ON"       # Код включения для Тех
 CODE_BAN_TECH = "BAN_TECH_ADMIN"       # Секретный код Владельца для бана тех. админа
 CODE_UNBAN_TECH = "UNBAN_TECH_ADMIN"   # Секретный код Владельца для разбана тех. админа
 
-# Глобальное состояние бота в памяти сервера Render
+# Состояние активности системы в оперативной памяти сервера Render
 system_status = {"is_active": True, "is_tech_allowed": True}
 
-# --- КЛАВИАТУРА ГОРОДОВ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ---
+# --- КЛАВИАТУРА ГОРОДОВ ДЛЯ ОБЫЧНЫХ ЛЮДЕЙ ---
 weather_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 weather_keyboard.row(KeyboardButton("Москва"), KeyboardButton("Зеленоград"))
 weather_keyboard.row(KeyboardButton("Санкт-Петербург"), KeyboardButton("Екатеринбург"))
 weather_keyboard.row(KeyboardButton("Поварово"))
 weather_keyboard.row(KeyboardButton("Информация"))
 
-# --- ПОГОДНЫЙ МОДУЛЬ (СТРОГО НА СЕГОДНЯ) ---
+# --- КЛИМАТИЧЕСКАЯ МОДЕЛЬ (ПРОГНОЗ СТРОГО НА СЕГОДНЯ) ---
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0}, "Зеленоград": {"text": None, "updated_at": 0},
@@ -90,9 +91,10 @@ def get_cached_weather(city_name):
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
-# --- ОБРАБОТКА КОМАНД И КОД-ФРАЗ УПРАВЛЕНИЯ ---
+# --- ОБРАБОТКА ХЕНДЛЕРОВ И ТЕКСТОВЫХ СИГНАЛОВ ---
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
+    # Если бот выключен — обычные люди получают заглушку
     if not system_status["is_active"]:
         bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
         return
@@ -101,9 +103,8 @@ def cmd_start(message):
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     text = message.text.strip()
-    user_id = message.from_user.id
 
-    # 1. ПРИОРИТЕТНАЯ ПРОВЕРКА КОД-ФРАЗ ВЛAДЕЛЬЦА (Hatik)
+    # 1. СИСТЕМНЫЕ КОДЫ ВЛАДЕЛЦА (Hatik)
     if text == CODE_OWNER_OFF:
         system_status["is_active"] = False
         bot.send_message(message.chat.id, "🔴 Погодный бот успешно ВЫКЛЮЧЕН. Обычные пользователи заблокированы.")
@@ -121,7 +122,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "🔓 Доступ для Технического администратора успешно РАЗБЛОКИРОВАН.")
         return
 
-    # 2. ПРОВЕРКА КОД-ФРАЗ ТЕХНИЧЕСКОГО АДМИНИСТРАТОРА
+    # 2. СИСТЕМНЫЕ КОДЫ ТЕХНИЧЕСКОГО АДМИНИСТРАТОРА
     if text == CODE_TECH_OFF:
         if not system_status["is_tech_allowed"]:
             bot.send_message(message.chat.id, "❌ Отказано в доступе. Владелец проекта заблокировал ваши права управления.")
@@ -137,7 +138,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "🟢 Погодный бот успешно ВКЛЮЧЕН техническим администратором.")
         return
 
-    # 3. ЛОГИКА ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ (ЕСЛИ БОТ ВЫКЛЮЧЕН)
+    # 3. ПРОВЕРКА ДЛЯ ОБЫЧНЫХ ЛЮДЕЙ (ЕСЛИ КНОПКИ НАЖАТЫ В МОМЕНТ БЛОКИРОВКИ)
     if not system_status["is_active"]:
         bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
         return
@@ -146,9 +147,10 @@ def handle_all_messages(message):
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.1`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
 if __name__ == "__main__":
-    print("🚀 Автономный погодный бот v4.0 запущен!")
+    print("🚀 Автономный погодный бот v4.1 запущен!")
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
 
