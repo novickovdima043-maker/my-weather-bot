@@ -1,14 +1,16 @@
+import os
 import time
 import random
-import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
-# --- ТВОЙ НОВЫЙ ОБНОВЛЕННЫЙ ТОКЕН ПОГОДНОГО БОТА ---
+# --- ТОКЕН ТВОЕГО ЕДИНСТВЕННОГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAHYO1j_x-DTxbUScLKDwlQgKPwAVqoJZT4".strip()
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# Настройки текстовых кодов управления экосистемой
+# Настройки текстовых кодов управления
 CODE_OWNER_OFF = "H1A7T0I8K6"          # Код выключения для Владельца
 CODE_OWNER_ON = "H1A7T0I8K6_ON"        # Код включения для Владельца
 
@@ -94,7 +96,6 @@ def get_cached_weather(city_name):
 # --- ОБРАБОТКА ХЕНДЛЕРОВ И ТЕКСТОВЫХ СИГНАЛОВ ---
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    # Если бот выключен — обычные люди получают заглушку
     if not system_status["is_active"]:
         bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
         return
@@ -138,7 +139,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "🟢 Погодный бот успешно ВКЛЮЧЕН техническим администратором.")
         return
 
-    # 3. ПРОВЕРКА ДЛЯ ОБЫЧНЫХ ЛЮДЕЙ (ЕСЛИ КНОПКИ НАЖАТЫ В МОМЕНТ БЛОКИРОВКИ)
+    # 3. ПРОВЕРКА ДЛЯ ОБЫЧНЫХ ЛЮДЕЙ
     if not system_status["is_active"]:
         bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
         return
@@ -147,10 +148,24 @@ def handle_all_messages(message):
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.1`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.2`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+
+# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР ДЛЯ ПРОХОЖДЕНИЯ ПРОВЕРКИ PORT BINDING ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive")
+
+def run_health_server():
+    # Render передает номер порта в переменные окружения, если его нет - ставим 10000 по умолчанию
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
 
 if __name__ == "__main__":
-    print("🚀 Автономный погодный бот v4.1 запущен!")
+    # Запускаем веб-заглушку в параллельном потоке, чтобы Render мгновенно считал открытый порт
+    threading.Thread(target=run_health_server, daemon=True).start()
+    print("🚀 Автономный погодный бот v4.2 со встроенным шлюзом портов запущен!")
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
-
-
