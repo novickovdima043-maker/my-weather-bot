@@ -41,7 +41,8 @@ def get_inline_admin_panel(user_id):
     return markup
 
 def get_user_role(user_id):
-    if user_id == admin_sessions["owner_id"]: return "owner"
+    if user_id == admin_sessions["owner_id"]: 
+        return "owner"
     if user_id == admin_sessions["tech_admin_id"]:
         return "tech_admin" if admin_sessions["is_tech_allowed"] else "blocked"
     return "guest"
@@ -159,7 +160,7 @@ def handle_text_inputs(message):
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.6`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
 # --- ОБРАБОТКА НАЖАТИЙ INLINE-КНОПОК ---
 @bot.callback_query_handler(func=lambda call: True)
@@ -178,7 +179,7 @@ def process_admin_callbacks(call):
     elif call.data == "adm_clear_cache":
         for city in weather_memory: 
             weather_memory[city] = {"text": None, "updated_at": 0}
-        bot.answer_callback_query(call.id, "🔄 Кэш погодных данных успешно сброшен!", show_alert=True)
+        bot.answer_callback_query(call.id, "🔄 Кэш успешно сброшен!", show_alert=True)
         
     elif call.data == "adm_lock_tech":
         if role != "owner": 
@@ -189,13 +190,15 @@ def process_admin_callbacks(call):
         bot.answer_callback_query(call.id, f"Технический администратор {lock_text}!", show_alert=True)
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
         
-    elif callback.data == "adm_logout":
-        if role == "owner": admin_sessions["owner_id"] = None
-        elif role == "tech_admin": admin_sessions["tech_admin_id"] = None
+    elif call.data == "adm_logout":
+        if role == "owner": 
+            admin_sessions["owner_id"] = None
+        elif role == "tech_admin": 
+            admin_sessions["tech_admin_id"] = None
         bot.answer_callback_query(call.id, "Сессия закрыта. Выход...")
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР (ОТСТУПЫ СТРОГО ИСПРАВЛЕНЫ) ---
+# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -209,4 +212,5 @@ def run_health_server():
     server.serve_forever()
 
 if __name__ == "__main__":
-    # Исправлено: строго корректные табы для фонового потока
+    threading.Thread(target=run_health_server, daemon=True).start()
+
