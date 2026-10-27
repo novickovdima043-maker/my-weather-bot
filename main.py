@@ -1,50 +1,33 @@
-import os
 import time
 import random
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
 import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 # --- ТОКЕН ТВОЕГО ЕДИНСТВЕННОГО ПОГОДНОГО БОТА ---
 BOT_TOKEN = "8828936622:AAF17VoASomT32uFfX8XHhts7HOfUqwGjV4".strip()
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-CODE_OWNER = "H1A7T0I8K6"
-CODE_TECH_ADMIN = "M3I6S8H1K5O4"
+# Настройки ролей и доступов
+CODE_OWNER_OFF = "H1A7T0I8K6"          # Код выключения для Владельца
+CODE_OWNER_ON = "H1A7T0I8K6_ON"        # Код включения для Владельца
 
-bot_status = {"is_active": True}
-admin_sessions = {"owner_id": None, "tech_admin_id": None, "is_tech_allowed": True}
-user_waiting_for_code = {}
+CODE_TECH_OFF = "M3I6S8H1K5O4"         # Код выключения для Тех. админа
+CODE_TECH_ON = "M3I6S8H1K5O4_ON"       # Код включения для Тех. админа
 
-# --- КЛАВИАТУРЫ ---
+CODE_BAN_TECH = "BAN_TECH_ADMIN"       # Секретный код Владельца для бана тех. админа
+CODE_UNBAN_TECH = "UNBAN_TECH_ADMIN"   # Секретный код Владельца для разбана тех. админа
+
+# Глобальное состояние бота в памяти сервера Render
+system_status = {"is_active": True, "is_tech_allowed": True}
+
+# --- КЛАВИАТУРА ГОРОДОВ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ---
 weather_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 weather_keyboard.row(KeyboardButton("Москва"), KeyboardButton("Зеленоград"))
 weather_keyboard.row(KeyboardButton("Санкт-Петербург"), KeyboardButton("Екатеринбург"))
 weather_keyboard.row(KeyboardButton("Поварово"))
-weather_keyboard.row(KeyboardButton("Информация"), KeyboardButton("⚙️ Система"))
+weather_keyboard.row(KeyboardButton("Информация"))
 
-def get_inline_admin_panel(user_id):
-    status_text = "🔴 Выключить бота" if bot_status["is_active"] else "🟢 Включить бота"
-    allowed_text = "🔒 Блокировать тех. админа" if admin_sessions["is_tech_allowed"] else "🔓 Разблокировать тех. админа"
-    
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(text=status_text, callback_data="adm_toggle"))
-    
-    if user_id == admin_sessions["owner_id"]:
-        markup.add(InlineKeyboardButton(text=allowed_text, callback_data="adm_lock_tech"))
-        
-    markup.add(InlineKeyboardButton(text="🔄 Перезагрузить кэш", callback_data="adm_clear_cache"))
-    markup.add(InlineKeyboardButton(text="🚪 Выйти из аккаунта", callback_data="adm_logout"))
-    return markup
-
-def get_user_role(user_id):
-    if user_id == admin_sessions["owner_id"]: return "owner"
-    if user_id == admin_sessions["tech_admin_id"]:
-        return "tech_admin" if admin_sessions["is_tech_allowed"] else "blocked"
-    return "guest"
-
-# --- ПОГОДА ---
+# --- ПОГОДНЫЙ МОДУЛЬ (СТРОГО НА СЕГОДНЯ) ---
 WEATHER_STATUSES = ["Ясно ☀️", "Малооблачно 🌤", "Облачно с прояснениями ⛅", "Пасмурно ☁️", "Густой туман 🌫"]
 weather_memory = {
     "Москва": {"text": None, "updated_at": 0}, "Зеленоград": {"text": None, "updated_at": 0},
@@ -107,105 +90,65 @@ def get_cached_weather(city_name):
     weather_memory[city_name]["updated_at"] = current_time
     return fresh_report
 
-# --- ОБРАБОТКА ХЕНДЛЕРОВ ---
+# --- ОБРАБОТКА КОМАНД И КОД-ФРАЗ УПРАВЛЕНИЯ ---
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    user_waiting_for_code[message.from_user.id] = False
-    if not bot_status["is_active"] and get_user_role(message.from_user.id) == "guest":
-        bot.send_message(message.chat.id, "⚠️ Бот выключен по техническим обстоятельствам")
+    if not system_status["is_active"]:
+        bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
         return
     bot.send_message(message.chat.id, "Привет! Я твой чистый автономный погодный бот. Выберите город ниже 👇", reply_markup=weather_keyboard)
 
-@bot.message_handler(func=lambda message: message.text == "⚙️ Система")
-def process_system_click(message):
-    user_id = message.from_user.id
-    role = get_user_role(user_id)
-    if role in ["owner", "tech_admin"]:
-        role_title = "Владелец (Hatik)" if role == "owner" else "Технический администратор"
-        bot.send_message(message.chat.id, f"Показываю клавиатуру\nВы вошли как: *{role_title}*", reply_markup=get_inline_admin_panel(user_id))
-        return
-    user_waiting_for_code[user_id] = True
-    bot.send_message(message.chat.id, "🔒 Доступ ограничен. Введите секретную код-фразу для входа в пульт управления:")
-
 @bot.message_handler(func=lambda message: True)
-def handle_text_inputs(message):
-    user_id = message.from_user.id
+def handle_all_messages(message):
     text = message.text.strip()
-    
-    if user_waiting_for_code.get(user_id):
-        if text == CODE_OWNER:
-            admin_sessions["owner_id"] = user_id
-            user_waiting_for_code[user_id] = False
-            bot.send_message(message.chat.id, "Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
-        elif text == CODE_TECH_ADMIN:
-            if not admin_sessions["is_tech_allowed"]:
-                bot.send_message(message.chat.id, "❌ Вход заблокирован Владельцем проекта.")
-                user_waiting_for_code[user_id] = False
-                return
-            admin_sessions["tech_admin_id"] = user_id
-            user_waiting_for_code[user_id] = False
-            bot.send_message(message.chat.id, "Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
-        else:
-            bot.send_message(message.chat.id, "❌ Неверная код-фраза. Доступ отклонен.")
-            user_waiting_for_code[user_id] = False
+    user_id = message.from_user.id
+
+    # 1. ПРИОРИТЕТНАЯ ПРОВЕРКА КОД-ФРАЗ ВЛAДЕЛЬЦА (Hatik)
+    if text == CODE_OWNER_OFF:
+        system_status["is_active"] = False
+        bot.send_message(message.chat.id, "🔴 Погодный бот успешно ВЫКЛЮЧЕН. Обычные пользователи заблокированы.")
+        return
+    elif text == CODE_OWNER_ON:
+        system_status["is_active"] = True
+        bot.send_message(message.chat.id, "🟢 Погодный бот успешно ВКЛЮЧЕН и вернулся в штатный режим.")
+        return
+    elif text == CODE_BAN_TECH:
+        system_status["is_tech_allowed"] = False
+        bot.send_message(message.chat.id, "🔒 Доступ для Технического администратора успешно ЗАБЛОКИРОВАН.")
+        return
+    elif text == CODE_UNBAN_TECH:
+        system_status["is_tech_allowed"] = True
+        bot.send_message(message.chat.id, "🔓 Доступ для Технического администратора успешно РАЗБЛОКИРОВАН.")
         return
 
-    if not bot_status["is_active"] and get_user_role(user_id) == "guest":
-        bot.send_message(message.chat.id, "⚠️ Бот выключен по техническим обстоятельствам")
+    # 2. ПРОВЕРКА КОД-ФРАЗ ТЕХНИЧЕСКОГО АДМИНИСТРАТОРА
+    if text == CODE_TECH_OFF:
+        if not system_status["is_tech_allowed"]:
+            bot.send_message(message.chat.id, "❌ Отказано в доступе. Владелец проекта заблокировал ваши права управления.")
+            return
+        system_status["is_active"] = False
+        bot.send_message(message.chat.id, "🔴 Погодный бот успешно ВЫКЛЮЧЕН техническим администратором.")
         return
-        
+    elif text == CODE_TECH_ON:
+        if not system_status["is_tech_allowed"]:
+            bot.send_message(message.chat.id, "❌ Отказано в доступе. Владелец проекта заблокировал ваши права управления.")
+            return
+        system_status["is_active"] = True
+        bot.send_message(message.chat.id, "🟢 Погодный бот успешно ВКЛЮЧЕН техническим администратором.")
+        return
+
+    # 3. ЛОГИКА ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ (ЕСЛИ БОТ ВЫКЛЮЧЕН)
+    if not system_status["is_active"]:
+        bot.send_message(message.chat.id, "Бот временно не работает по техническим обстоятельствам")
+        return
+
+    # 4. ШТАТНАЯ РАБОТА КНОПОК ГОРОДОВ
     if text in weather_memory:
         bot.send_message(message.chat.id, get_cached_weather(text), reply_markup=weather_keyboard)
     elif text == "Информация":
-        bot.send_message(message.chat.id, "ℹ️ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
+        bot.send_message(message.chat.id, "ℹ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v4.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
-# --- ИСПРАВЛЕНО: ПЕРВООЧЕРЕДНОЕ СНЯТИЕ ТАЙМЕРА ЗАГРУЗКИ КНОПКИ ---
-@bot.callback_query_handler(func=lambda call: True)
-def process_admin_callbacks(call):
-    user_id = call.from_user.id
-    role = get_user_role(user_id)
-    if role not in ["owner", "tech_admin"]: 
-        bot.answer_callback_query(call.id, "❌ Отказано в доступе.")
-        return
+if __name__ == "__main__":
+    print("🚀 Автономный погодный бот v4.0 запущен!")
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
 
-    # Изменение статуса ВКЛ / ВЫКЛ бота
-    if call.data == "adm_toggle":
-        bot_status["is_active"] = not bot_status["is_active"]
-        status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
-        # Мгновенно тушим крутилку на экране [INDEX]
-        bot.answer_callback_query(call.id, f"📢 {status_str}", show_alert=False)
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
-        
-    # Сброс часового кэша городов
-    elif call.data == "adm_clear_cache":
-        for city in weather_memory: 
-            weather_memory[city] = {"text": None, "updated_at": 0}
-        bot.answer_callback_query(call.id, "🔄 Кэш погодных данных успешно сброшен!", show_alert=True)
-        
-    # Блокировка технического администратора (доступно только Hatik)
-    elif call.data == "adm_lock_tech":
-        if role != "owner": 
-            bot.answer_callback_query(call.id, "❌ Доступ закрыт.")
-            return
-        admin_sessions["is_tech_allowed"] = not admin_sessions["is_tech_allowed"]
-        lock_text = "заблокирован" if not admin_sessions["is_tech_allowed"] else "разблокирован"
-        bot.answer_callback_query(call.id, f"Технический администратор {lock_text}!", show_alert=True)
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
-        
-    # Кнопка полного выхода из аккаунта
-    elif call.data == "adm_logout":
-        if role == "owner": admin_sessions["owner_id"] = None
-        elif role == "tech_admin": admin_sessions["tech_admin_id"] = None
-        bot.answer_callback_query(call.id, "Сессия закрыта. Выход...")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-
-# --- ВЕБ ЗАГЛУШКА ДЛЯ СЕРВЕРА ---
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Bot is alive")
-
-def run_health_server():
-    server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 10000))), HealthCheckHandler)
