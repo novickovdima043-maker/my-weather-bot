@@ -146,7 +146,7 @@ def handle_text_inputs(message):
             user_waiting_for_code[user_id] = False
             bot.send_message(message.chat.id, "Показываю клавиатуру", reply_markup=get_inline_admin_panel(user_id))
         else:
-            bot.send_message(message.chat.id, "❌ Неверная код-фразу. Доступ отклонен.")
+            bot.send_message(message.chat.id, "❌ Неверная код-фраза. Доступ отклонен.")
             user_waiting_for_code[user_id] = False
         return
 
@@ -159,27 +159,40 @@ def handle_text_inputs(message):
     elif text == "Информация":
         bot.send_message(message.chat.id, "ℹ️ *Информация о боте*\n─────────────────────\n🤖 Версия бота: `v1.0`\n💻 Разработчик: *Hatik*\n─────────────────────", reply_markup=weather_keyboard)
 
-# --- ИНЛАЙН НАЖАТИЯ ---
+# --- ИСПРАВЛЕНО: ПЕРВООЧЕРЕДНОЕ СНЯТИЕ ТАЙМЕРА ЗАГРУЗКИ КНОПКИ ---
 @bot.callback_query_handler(func=lambda call: True)
 def process_admin_callbacks(call):
     user_id = call.from_user.id
     role = get_user_role(user_id)
-    if role not in ["owner", "tech_admin"]: return
+    if role not in ["owner", "tech_admin"]: 
+        bot.answer_callback_query(call.id, "❌ Отказано в доступе.")
+        return
 
+    # Изменение статуса ВКЛ / ВЫКЛ бота
     if call.data == "adm_toggle":
         bot_status["is_active"] = not bot_status["is_active"]
         status_str = "Бот снова работает" if bot_status["is_active"] else "Бот выключен по техническим обстоятельствам"
-        bot.answer_callback_query(call.id, f"📢 {status_str}", show_alert=True)
+        # Мгновенно тушим крутилку на экране [INDEX]
+        bot.answer_callback_query(call.id, f"📢 {status_str}", show_alert=False)
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
+        
+    # Сброс часового кэша городов
     elif call.data == "adm_clear_cache":
-        for city in weather_memory: weather_memory[city] = {"text": None, "updated_at": 0}
+        for city in weather_memory: 
+            weather_memory[city] = {"text": None, "updated_at": 0}
         bot.answer_callback_query(call.id, "🔄 Кэш погодных данных успешно сброшен!", show_alert=True)
+        
+    # Блокировка технического администратора (доступно только Hatik)
     elif call.data == "adm_lock_tech":
-        if role != "owner": return
+        if role != "owner": 
+            bot.answer_callback_query(call.id, "❌ Доступ закрыт.")
+            return
         admin_sessions["is_tech_allowed"] = not admin_sessions["is_tech_allowed"]
         lock_text = "заблокирован" if not admin_sessions["is_tech_allowed"] else "разблокирован"
         bot.answer_callback_query(call.id, f"Технический администратор {lock_text}!", show_alert=True)
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_inline_admin_panel(user_id))
+        
+    # Кнопка полного выхода из аккаунта
     elif call.data == "adm_logout":
         if role == "owner": admin_sessions["owner_id"] = None
         elif role == "tech_admin": admin_sessions["tech_admin_id"] = None
@@ -196,9 +209,3 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
 def run_health_server():
     server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 10000))), HealthCheckHandler)
-    server.serve_forever()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_health_server, daemon=True).start()
-    print("🚀 Легковесный погодный бот запущен!")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
